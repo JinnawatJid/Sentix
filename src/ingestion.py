@@ -58,11 +58,14 @@ class TwitterClient:
                     })
             return tweets
 
-        except tweepy.Errors.Forbidden as e:
+        except tweepy.errors.Forbidden as e:
             logger.warning(f"X API Access Denied (403): Free Tier likely restricts reading tweets. {e}")
             return None # Signal to trigger fallback
-        except tweepy.Errors.TooManyRequests as e:
+        except tweepy.errors.TooManyRequests as e:
             logger.warning(f"X API Rate Limit Hit (429). {e}")
+            return None
+        except tweepy.errors.Unauthorized as e:
+            logger.warning(f"X API Unauthorized (401): likely bad keys. {e}")
             return None
         except Exception as e:
             logger.error(f"X API General Error: {e}")
