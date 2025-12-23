@@ -1,17 +1,98 @@
 import feedparser
 from datetime import datetime
 import time
-import yfinance as yf
-from ntscraper import Nitter
-import logging
 import requests
-import random
+import logging
+import tweepy
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 logger = logging.getLogger("Ingestion")
+
+class TwitterClient:
+    def __init__(self):
+        # We need Bearer Token for reading (if available) or OAuth1/2 for writing
+        # For Free Tier reading (user timeline) is usually restricted, but we try anyway.
+        self.bearer_token = os.getenv("TWITTER_BEARER_TOKEN")
+        self.client = None
+        if self.bearer_token:
+            try:
+                self.client = tweepy.Client(bearer_token=self.bearer_token)
+            except Exception as e:
+                logger.error(f"Failed to initialize Twitter Client: {e}")
+
+    def fetch_tweets(self, username, count=2):
+        """
+        Attempts to fetch tweets from a user's timeline.
+        This often fails on Free Tier (403 Forbidden).
+        """
+        if not self.client:
+            return []
+
+        logger.info(f"Attempting to fetch tweets from @{username} via X API...")
+        try:
+            # 1. Get User ID
+            user = self.client.get_user(username=username)
+            if not user.data:
+                logger.warning(f"User @{username} not found.")
+                return []
+
+            user_id = user.data.id
+
+            # 2. Get Tweets
+            # exclude=['retweets', 'replies'] is good practice
+            response = self.client.get_users_tweets(user_id, max_results=5, exclude=['retweets', 'replies'])
+
+            tweets = []
+            if response.data:
+                for t in response.data[:count]:
+                    tweets.append({
+                        "title": f"Tweet from @{username}",
+                        "text": t.text,
+                        "summary": t.text, # Use text as summary
+                        "source": f"@{username}",
+                        "timestamp": datetime.now().isoformat(), # API v2 doesn't give date easily without fields expansion
+                        "id": str(t.id),
+                        "link": f"https://twitter.com/{username}/status/{t.id}"
+                    })
+            return tweets
+
+        except tweepy.Errors.Forbidden as e:
+            logger.warning(f"X API Access Denied (403): Free Tier likely restricts reading tweets. {e}")
+            return None # Signal to trigger fallback
+        except tweepy.Errors.TooManyRequests as e:
+            logger.warning(f"X API Rate Limit Hit (429). {e}")
+            return None
+        except Exception as e:
+            logger.error(f"X API General Error: {e}")
+            return None
 
 class IngestionModule:
     def __init__(self):
         self.rss_url = "https://www.coindesk.com/arc/outboundfeeds/rss/"
+        self.twitter_client = TwitterClient()
+
+    def fetch_news(self):
+        """
+        Main entry point. Tries X API first, then falls back to RSS.
+        """
+        all_news = []
+
+        # 1. Try X API
+        # We try to get news from WatcherGuru or CoinDesk
+        twitter_news = self.twitter_client.fetch_tweets("WatcherGuru", count=2)
+
+        if twitter_news:
+            logger.info(f"Successfully fetched {len(twitter_news)} tweets from X API.")
+            all_news.extend(twitter_news)
+        else:
+            logger.info("X API failed or returned no data. Switching to RSS Fallback.")
+            # 2. Fallback to RSS
+            rss_news = self.fetch_coindesk_news()
+            all_news.extend(rss_news)
+
+        return all_news
 
     def fetch_coindesk_news(self):
         """Fetches the latest news from CoinDesk RSS feed."""
@@ -25,56 +106,29 @@ class IngestionModule:
                     "link": entry.link,
                     "published": entry.published,
                     "summary": entry.summary,
-                    "source": "CoinDesk"
+                    "source": "CoinDesk",
+                    "id": entry.link
                 })
             return news_items
         except Exception as e:
             logger.error(f"RSS Fetch Error: {e}")
             return []
 
-class TwitterScraper:
-    def __init__(self):
-        # Retry logic for Nitter instances could go here, but Nitter is inherently unstable without a rotating proxy.
-        self.scraper = Nitter(log_level=1, skip_instance_check=False)
-
-    def fetch_tweets(self, accounts=["WatcherGuru", "CoinDesk"], count=2):
-        tweets = []
-        for account in accounts:
-            logger.info(f"Scraping tweets from @{account}...")
-            try:
-                data = self.scraper.get_tweets(account, mode='user', number=count)
-                if 'tweets' in data and len(data['tweets']) > 0:
-                    for t in data['tweets']:
-                        tweets.append({
-                            "text": t['text'],
-                            "user": account,
-                            "timestamp": t['date'],
-                            "id": t['link'],
-                            "link": t['link']
-                        })
-                else:
-                    logger.warning(f"No tweets found for @{account}")
-            except Exception as e:
-                logger.error(f"Error scraping @{account}: {e}")
-                # No mock fallback here; if we can't get tweets, we just return empty list
-        return tweets
-
 class WhaleMonitor:
     def __init__(self):
-        self.scraper = TwitterScraper()
+        self.twitter_client = TwitterClient()
 
     def get_whale_movements(self, symbol="BTC"):
         """
         Tries to get data from @whale_alert. 
         Fallback: Uses blockchain.info to find large unconfirmed transactions.
         """
-        # 1. Try Twitter
-        tweets = self.scraper.fetch_tweets(["whale_alert"], count=3)
+        # 1. Try Twitter (X API)
+        tweets = self.twitter_client.fetch_tweets("whale_alert", count=3)
         if tweets:
-            # Filter for relevant symbol
             relevant = [t['text'] for t in tweets if symbol in t['text']]
             if relevant:
-                return f"Recent Whale Alerts: {'; '.join(relevant)}"
+                return f"Recent Whale Alerts (Verified via X): {'; '.join(relevant)}"
         
         # 2. Fallback: Real On-Chain Data (Blockchain.info)
         logger.info("Fallback: Checking Blockchain.info for large transactions...")
@@ -134,10 +188,12 @@ if __name__ == "__main__":
     
     # Test
     ingestor = IngestionModule()
-    print(f"News Items: {len(ingestor.fetch_coindesk_news())}")
+    print("--- Testing Ingestion ---")
+    items = ingestor.fetch_news()
+    print(f"Fetched {len(items)} items.")
+    if items:
+        print(f"Sample: {items[0]['title']}")
     
     whale = WhaleMonitor()
+    print("\n--- Testing Whale Monitor ---")
     print(f"Whale Status: {whale.get_whale_movements('BTC')}")
-    
-    market = MarketData()
-    print(f"Market: {market.get_market_status('BTC')}")

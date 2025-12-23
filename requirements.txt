@@ -1,9 +1,11 @@
 chromadb
 playwright
 feedparser
-ollama
 beautifulsoup4
 lxml
-ntscraper
 yfinance
 pandas
+google-generativeai
+tweepy
+python-dotenv
+schedule

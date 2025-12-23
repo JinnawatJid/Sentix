@@ -1,18 +1,28 @@
-import ollama
+import google.generativeai as genai
 import os
+import json
+import logging
+from dotenv import load_dotenv
+
+load_dotenv()
+logger = logging.getLogger("AnalysisAgent")
 
 class AnalysisAgent:
-    def __init__(self, model_name="gemma3"):
-        self.model_name = model_name
-        self.host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-        # In a real environment, you might need to configure the ollama client with the host
-        # The ollama python library checks OLLAMA_HOST env var automatically.
+    def __init__(self):
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
+            logger.warning("GEMINI_API_KEY not found in environment variables. AI analysis will fail.")
+        else:
+            genai.configure(api_key=self.api_key)
+            self.model = genai.GenerativeModel('gemini-1.5-flash') # Using Flash for speed/cost efficiency
 
     def analyze_situation(self, news_item, whale_data, historical_context):
         """
         Analyzes the current news + whale data + history to determine sentiment and generate a tweet.
         """
-        
+        if not hasattr(self, 'model'):
+             return self._fallback_response("Missing API Key")
+
         prompt = f"""
         You are 'Sentix', an elite crypto sentiment analyst AI.
         
@@ -40,32 +50,26 @@ class AnalysisAgent:
             "tweet": "Write a punchy, engaging tweet for X (Twitter). Use emojis. Mention key levels. Keep it under 280 chars. Add hashtags like #BTC #Crypto #Sentix."
         }}
         
-        Respond ONLY with the JSON.
+        Respond ONLY with the JSON string. Do not use Markdown formatting blocks (```json ... ```).
         """
         
         try:
-            response = ollama.chat(model=self.model_name, messages=[
-                {
-                    'role': 'user',
-                    'content': prompt,
-                },
-            ])
-            return response['message']['content']
+            response = self.model.generate_content(prompt)
+            return response.text
         except Exception as e:
-            # Fallback for when Ollama is not running (e.g. CI/CD or demo env)
-            print(f"Warning: AI Agent failed ({e}). Using fallback response.")
-            return """
-            {
-                "sentiment": "NEUTRAL",
-                "reasoning": "AI Model unavailable. Defaulting to neutral based on market data availability.",
-                "tweet": "🤖 #Sentix AI Offline. Market data shows active movement. Check the charts! #Bitcoin #Crypto"
-            }
-            """
+            logger.error(f"Gemini API Error: {e}")
+            return self._fallback_response(str(e))
+
+    def _fallback_response(self, error_msg):
+        return json.dumps({
+            "sentiment": "NEUTRAL",
+            "reasoning": f"AI Model unavailable ({error_msg}). Defaulting to neutral.",
+            "tweet": "🤖 #Sentix AI Alert: Market movement detected. Check the charts! #Bitcoin #Crypto"
+        })
 
 if __name__ == "__main__":
-    # Test the agent (Note: This requires Ollama running with the gemma3 model)
-    # If not running, it will print a connection error, which is expected in this env if the server isn't up.
-    agent = AnalysisAgent(model_name="gemma3")
+    # Test
+    agent = AnalysisAgent()
     
     mock_news = {"title": "Bitcoin drops below $60k", "summary": "Market fears rise as inflation data disappoints."}
     mock_whale = "🚨 2,000 BTC transferred from Binance to Unknown Wallet (Accumulation?)"
