@@ -1,0 +1,6 @@
+__pycache__/
+chroma_db/
+screenshots/
+*.log
+.env
+.DS_Store

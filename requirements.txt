@@ -1,0 +1,9 @@
+chromadb
+playwright
+feedparser
+ollama
+beautifulsoup4
+lxml
+ntscraper
+yfinance
+pandas
