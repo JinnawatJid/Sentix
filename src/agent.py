@@ -52,11 +52,22 @@ class AnalysisAgent:
         - Cross-reference the news with the whale data. (e.g., Bad news + Whales selling = Verified Panic. Bad news + Whales Buying = Bullish Divergence/Fakeout).
         - Use the historical context to see if this pattern has happened before.
         
+        TWEET FORMAT:
+        The tweet MUST strictly follow this format with these exact emojis and headers:
+
+        📝 Summary: [Brief summary of the news]
+
+        💸 Fund Flow: [Mention the whale data/on-chain flows]
+
+        🚀 Sentiment: [BULLISH/BEARISH/NEUTRAL] [Optional: Diamond/Rocket emoji if bullish]
+
+        (Ensure the total length is under 280 characters. Use hashtags like #BTC #Crypto #Sentix at the very end or integrated if space permits, but prioritize the structure.)
+
         OUTPUT FORMAT (JSON):
         {{
             "sentiment": "BULLISH/BEARISH/NEUTRAL",
             "reasoning": "Brief explanation of why.",
-            "tweet": "Write a punchy, engaging tweet for X (Twitter). Use emojis. Mention key levels. Keep it under 280 chars. Add hashtags like #BTC #Crypto #Sentix."
+            "tweet": "The formatted tweet string as described above."
         }}
         
         Respond ONLY with the JSON string. Do not use Markdown formatting blocks (```json ... ```).
@@ -78,7 +89,7 @@ class AnalysisAgent:
         return json.dumps({
             "sentiment": "NEUTRAL",
             "reasoning": f"AI Model unavailable ({error_msg}). Defaulting to neutral.",
-            "tweet": "🤖 #Sentix AI Alert: Market movement detected. Check the charts! #Bitcoin #Crypto"
+            "tweet": "📝 Summary: Market movement detected.\n\n💸 Fund Flow: Analyzing on-chain data.\n\n🚀 Sentiment: NEUTRAL 🤖\n\n#Bitcoin #Crypto #Sentix"
         })
 
 if __name__ == "__main__":
