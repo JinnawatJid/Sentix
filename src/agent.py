@@ -1,4 +1,5 @@
 from google import genai
+from google.genai import types
 import os
 import json
 import logging
@@ -15,7 +16,12 @@ class AnalysisAgent:
             logger.warning("GEMINI_API_KEY not found in environment variables. AI analysis will fail.")
         else:
             try:
-                self.client = genai.Client(api_key=self.api_key)
+                # Preview models often require v1alpha.
+                # We explicitly set it here to avoid 404 errors with experimental models.
+                self.client = genai.Client(
+                    api_key=self.api_key,
+                    http_options=types.HttpOptions(api_version='v1alpha')
+                )
             except Exception as e:
                  logger.error(f"Failed to initialize Gemini Client: {e}")
 
@@ -57,8 +63,10 @@ class AnalysisAgent:
         """
         
         try:
+            # Using Gemini 3 Flash Preview as requested
+            # Note: Preview models often require v1alpha or v1beta. The SDK defaults to v1beta.
             response = self.client.models.generate_content(
-                model='gemini-1.5-flash',
+                model='gemini-3-flash-preview',
                 contents=prompt
             )
             return response.text
