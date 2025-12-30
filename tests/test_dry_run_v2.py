@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Mock external dependencies BEFORE importing modules that use them
 sys.modules['tweepy'] = MagicMock()
-sys.modules['google.generativeai'] = MagicMock()
+# sys.modules['google.genai'] = MagicMock() # We don't mock the whole module to allow imports
 sys.modules['chromadb'] = MagicMock()
 sys.modules['playwright.sync_api'] = MagicMock()
 
@@ -49,19 +49,22 @@ def run_dry_run():
     # 2. Mock AI Analysis
     logger.info("--- Step 2: Mock AI Analysis ---")
 
-    with patch('src.agent.genai.GenerativeModel') as mock_model_class:
-        mock_model = mock_model_class.return_value
+    # Mock the Client class in src.agent.genai
+    with patch('src.agent.genai.Client') as mock_client_class:
+        mock_client = mock_client_class.return_value
         mock_response = MagicMock()
         mock_response.text = json.dumps({
             "sentiment": "BULLISH",
             "reasoning": "Mock reasoning.",
             "tweet": "Bitcoin to the moon! 🚀 #BTC"
         })
-        mock_model.generate_content.return_value = mock_response
 
-        # We need to manually set the model on the agent because __init__ mocks it out
+        # Mock client.models.generate_content
+        mock_client.models.generate_content.return_value = mock_response
+
         agent = AnalysisAgent()
-        agent.model = mock_model
+        # Ensure client is set (AnalysisAgent sets it in __init__ if env var exists, but we want to force our mock)
+        agent.client = mock_client
 
         result = agent.analyze_situation(
             {"title": "Mock News"},

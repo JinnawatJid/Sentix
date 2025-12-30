@@ -5,7 +5,7 @@ beautifulsoup4
 lxml
 yfinance
 pandas
-google-generativeai
+google-genai
 tweepy
 python-dotenv
 schedule
