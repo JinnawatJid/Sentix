@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 import os
 import json
 import logging
@@ -10,18 +10,21 @@ logger = logging.getLogger("AnalysisAgent")
 class AnalysisAgent:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
+        self.client = None
         if not self.api_key:
             logger.warning("GEMINI_API_KEY not found in environment variables. AI analysis will fail.")
         else:
-            genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-1.5-flash') # Using Flash for speed/cost efficiency
+            try:
+                self.client = genai.Client(api_key=self.api_key)
+            except Exception as e:
+                 logger.error(f"Failed to initialize Gemini Client: {e}")
 
     def analyze_situation(self, news_item, whale_data, historical_context):
         """
         Analyzes the current news + whale data + history to determine sentiment and generate a tweet.
         """
-        if not hasattr(self, 'model'):
-             return self._fallback_response("Missing API Key")
+        if not self.client:
+             return self._fallback_response("Missing API Key or Client Initialization Failed")
 
         prompt = f"""
         You are 'Sentix', an elite crypto sentiment analyst AI.
@@ -54,7 +57,10 @@ class AnalysisAgent:
         """
         
         try:
-            response = self.model.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model='gemini-1.5-flash',
+                contents=prompt
+            )
             return response.text
         except Exception as e:
             logger.error(f"Gemini API Error: {e}")
