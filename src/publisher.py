@@ -64,7 +64,21 @@ class TwitterPublisher:
             logger.info(f"Tweet posted successfully! ID: {response.data['id']}")
             return True
         except Exception as e:
-            logger.error(f"Failed to post tweet: {e}")
+            logger.error(f"Failed to post tweet via V2 Client: {e}")
+
+            # Fallback to V1.1 API if V2 fails (Common for Free Tier / Media issues)
+            if self.api_v1:
+                logger.info("Attempting V1.1 API Fallback...")
+                try:
+                    if media_id:
+                        self.api_v1.update_status(status=text, media_ids=[media_id])
+                    else:
+                        self.api_v1.update_status(status=text)
+                    logger.info("Tweet posted successfully via V1.1 Fallback!")
+                    return True
+                except Exception as v1_e:
+                    logger.error(f"V1.1 Fallback also failed: {v1_e}")
+
             return False
 
 if __name__ == "__main__":
