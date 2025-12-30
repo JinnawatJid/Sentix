@@ -8,10 +8,37 @@ from dotenv import load_dotenv
 load_dotenv()
 logger = logging.getLogger("AnalysisAgent")
 
+# Localization Configuration
+LOCALIZATION = {
+    "en": {
+        "headers": {
+            "summary": "📝 Summary",
+            "fund_flow": "💸 Fund Flow",
+            "sentiment": "🚀 Sentiment"
+        },
+        "fallback": "📝 Summary: Market movement detected.\n\n💸 Fund Flow: Analyzing on-chain data.\n\n🚀 Sentiment: NEUTRAL 🤖\n\n#Bitcoin #Crypto #Sentix",
+        "prompt_instruction": "Ensure the tweet is in English."
+    },
+    "th": {
+        "headers": {
+            "summary": "📝 สรุป",
+            "fund_flow": "💸 กระแสเงินทุน",
+            "sentiment": "🚀 ความรู้สึก"
+        },
+        "fallback": "📝 สรุป: ตรวจพบความเคลื่อนไหวของตลาด\n\n💸 กระแสเงินทุน: กำลังวิเคราะห์ข้อมูล On-chain\n\n🚀 ความรู้สึก: เป็นกลาง (NEUTRAL) 🤖\n\n#Bitcoin #Crypto #Sentix",
+        "prompt_instruction": "Translate the tweet content to Thai. Translate the headers as specified below. Keep hashtags in English (e.g. #Bitcoin #Crypto)."
+    }
+}
+
 class AnalysisAgent:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
         self.client = None
+        self.language = "en"  # Default
+
+        # Load Configuration
+        self._load_config()
+
         if not self.api_key:
             logger.warning("GEMINI_API_KEY not found in environment variables. AI analysis will fail.")
         else:
@@ -25,12 +52,31 @@ class AnalysisAgent:
             except Exception as e:
                  logger.error(f"Failed to initialize Gemini Client: {e}")
 
+    def _load_config(self):
+        """Loads language configuration from config.json"""
+        try:
+            if os.path.exists("config.json"):
+                with open("config.json", "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                    self.language = config.get("language", "en")
+                    if self.language not in LOCALIZATION:
+                        logger.warning(f"Language '{self.language}' not supported. Defaulting to 'en'.")
+                        self.language = "en"
+            else:
+                logger.info("config.json not found. Defaulting to 'en'.")
+        except Exception as e:
+            logger.error(f"Error loading config.json: {e}. Defaulting to 'en'.")
+
     def analyze_situation(self, news_item, whale_data, historical_context):
         """
         Analyzes the current news + whale data + history to determine sentiment and generate a tweet.
         """
         if not self.client:
              return self._fallback_response("Missing API Key or Client Initialization Failed")
+
+        loc = LOCALIZATION.get(self.language, LOCALIZATION["en"])
+        headers = loc["headers"]
+        prompt_instruction = loc["prompt_instruction"]
 
         prompt = f"""
         You are 'Sentix', an elite crypto sentiment analyst AI.
@@ -51,15 +97,16 @@ class AnalysisAgent:
         - Determine the sentiment (BULLISH, BEARISH, or NEUTRAL).
         - Cross-reference the news with the whale data. (e.g., Bad news + Whales selling = Verified Panic. Bad news + Whales Buying = Bullish Divergence/Fakeout).
         - Use the historical context to see if this pattern has happened before.
+        - {prompt_instruction}
         
         TWEET FORMAT:
         The tweet MUST strictly follow this format with these exact emojis and headers:
 
-        📝 Summary: [Brief summary of the news]
+        {headers['summary']}: [Brief summary of the news]
 
-        💸 Fund Flow: [Mention the whale data/on-chain flows]
+        {headers['fund_flow']}: [Mention the whale data/on-chain flows]
 
-        🚀 Sentiment: [BULLISH/BEARISH/NEUTRAL] [Optional: Diamond/Rocket emoji if bullish]
+        {headers['sentiment']}: [BULLISH/BEARISH/NEUTRAL] [Optional: Diamond/Rocket emoji if bullish]
 
         (Ensure the total length is under 280 characters. Use hashtags like #BTC #Crypto #Sentix at the very end or integrated if space permits, but prioritize the structure.)
 
@@ -86,15 +133,19 @@ class AnalysisAgent:
             return self._fallback_response(str(e))
 
     def _fallback_response(self, error_msg):
+        loc = LOCALIZATION.get(self.language, LOCALIZATION["en"])
+        fallback_tweet = loc["fallback"]
+
         return json.dumps({
             "sentiment": "NEUTRAL",
             "reasoning": f"AI Model unavailable ({error_msg}). Defaulting to neutral.",
-            "tweet": "📝 Summary: Market movement detected.\n\n💸 Fund Flow: Analyzing on-chain data.\n\n🚀 Sentiment: NEUTRAL 🤖\n\n#Bitcoin #Crypto #Sentix"
+            "tweet": fallback_tweet
         })
 
 if __name__ == "__main__":
     # Test
     agent = AnalysisAgent()
+    print(f"Loaded Language: {agent.language}")
     
     mock_news = {"title": "Bitcoin drops below $60k", "summary": "Market fears rise as inflation data disappoints."}
     mock_whale = "🚨 2,000 BTC transferred from Binance to Unknown Wallet (Accumulation?)"
