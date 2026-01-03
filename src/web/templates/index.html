@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentix Bot Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-900 text-white font-sans">
+    <div class="container mx-auto p-6">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-blue-400">Sentix<span class="text-white">Dashboard</span></h1>
+            <div class="flex gap-4">
+                <span id="status-badge" class="px-4 py-2 rounded-full bg-gray-700 text-sm font-semibold">Loading...</span>
+                <button onclick="triggerRun()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold transition">Run Now</button>
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h3 class="text-gray-400 text-sm">Last Run Status</h3>
+                <p id="last-status" class="text-xl font-bold mt-2">Unknown</p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h3 class="text-gray-400 text-sm">Total Bulls</h3>
+                <p id="stat-bull" class="text-xl font-bold mt-2 text-green-400">0</p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h3 class="text-gray-400 text-sm">Total Bears</h3>
+                <p id="stat-bear" class="text-xl font-bold mt-2 text-red-400">0</p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h3 class="text-gray-400 text-sm">Active Tweets</h3>
+                <p id="stat-tweets" class="text-xl font-bold mt-2">0</p>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h2 class="text-xl font-bold mb-4">Engagement (Likes/Retweets)</h2>
+                <canvas id="engagementChart"></canvas>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h2 class="text-xl font-bold mb-4">Sentiment Distribution</h2>
+                <canvas id="sentimentChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Logs Section -->
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+            <h2 class="text-xl font-bold mb-4">Recent Activity Logs</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="text-gray-400 border-b border-gray-700">
+                            <th class="p-2">Time</th>
+                            <th class="p-2">Level</th>
+                            <th class="p-2">Message</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs-table-body">
+                        <!-- Logs here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "/api";
+
+        async function fetchStatus() {
+            const res = await fetch(`${API_BASE}/status`);
+            const data = await res.json();
+
+            const badge = document.getElementById('status-badge');
+            badge.innerText = `Status: ${data.status}`;
+            badge.className = data.status === "Running"
+                ? "px-4 py-2 rounded-full bg-green-900 text-green-300 text-sm font-semibold"
+                : "px-4 py-2 rounded-full bg-gray-700 text-gray-300 text-sm font-semibold";
+
+            document.getElementById('last-status').innerText = data.last_run_status;
+        }
+
+        async function triggerRun() {
+            if(!confirm("Start a manual run?")) return;
+            const res = await fetch(`${API_BASE}/control/run`, {method: "POST"});
+            if(res.ok) {
+                alert("Run started!");
+                fetchStatus();
+                fetchLogs();
+            }
+        }
+
+        async function fetchLogs() {
+            const res = await fetch(`${API_BASE}/logs`);
+            const logs = await res.json();
+            const tbody = document.getElementById('logs-table-body');
+            tbody.innerHTML = "";
+
+            logs.forEach(log => {
+                const row = document.createElement('tr');
+                row.className = "border-b border-gray-700 hover:bg-gray-750";
+
+                // Colorize Level
+                let levelColor = "text-white";
+                if(log.level === "ERROR") levelColor = "text-red-400";
+                if(log.level === "WARNING") levelColor = "text-yellow-400";
+
+                row.innerHTML = `
+                    <td class="p-2 text-sm text-gray-400">${new Date(log.timestamp).toLocaleString()}</td>
+                    <td class="p-2 font-mono text-sm ${levelColor}">${log.level}</td>
+                    <td class="p-2 text-sm">${log.message}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        let sentimentChartInstance = null;
+        let engagementChartInstance = null;
+
+        async function fetchStats() {
+            const res = await fetch(`${API_BASE}/stats`);
+            const data = await res.json();
+
+            // Text Stats
+            document.getElementById('stat-bull').innerText = data.sentiment.bullish;
+            document.getElementById('stat-bear').innerText = data.sentiment.bearish;
+            document.getElementById('stat-tweets').innerText = data.engagement.length;
+
+            // Sentiment Chart
+            const ctxSent = document.getElementById('sentimentChart').getContext('2d');
+            if(sentimentChartInstance) sentimentChartInstance.destroy();
+            sentimentChartInstance = new Chart(ctxSent, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Bullish', 'Bearish', 'Neutral'],
+                    datasets: [{
+                        data: [data.sentiment.bullish, data.sentiment.bearish, data.sentiment.neutral],
+                        backgroundColor: ['#4ade80', '#f87171', '#9ca3af'],
+                        borderWidth: 0
+                    }]
+                },
+                options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+            });
+
+            // Engagement Chart
+            const ctxEng = document.getElementById('engagementChart').getContext('2d');
+            const engagementData = data.engagement; // Array of {date, likes, retweets}
+
+            if(engagementChartInstance) engagementChartInstance.destroy();
+            engagementChartInstance = new Chart(ctxEng, {
+                type: 'line',
+                data: {
+                    labels: engagementData.map(e => e.date),
+                    datasets: [
+                        {
+                            label: 'Likes',
+                            data: engagementData.map(e => e.likes),
+                            borderColor: '#60a5fa',
+                            tension: 0.3
+                        },
+                        {
+                            label: 'Retweets',
+                            data: engagementData.map(e => e.retweets),
+                            borderColor: '#34d399',
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: { y: { beginAtZero: true, grid: { color: '#374151' } }, x: { grid: { display: false } } }
+                }
+            });
+        }
+
+        // Init
+        fetchStatus();
+        fetchLogs();
+        fetchStats();
+
+        // Auto refresh
+        setInterval(() => {
+            fetchStatus();
+            fetchLogs(); // Maybe throttle this
+        }, 5000);
+    </script>
+</body>
+</html>

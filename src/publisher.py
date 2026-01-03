@@ -62,7 +62,7 @@ class TwitterPublisher:
                 response = self.client.create_tweet(text=text)
 
             logger.info(f"Tweet posted successfully! ID: {response.data['id']}")
-            return True
+            return response.data['id']
         except Exception as e:
             logger.error(f"Failed to post tweet via V2 Client: {e}")
 
@@ -71,17 +71,53 @@ class TwitterPublisher:
                 logger.info("Attempting V1.1 API Fallback...")
                 try:
                     if media_id:
-                        self.api_v1.update_status(status=text, media_ids=[media_id])
+                        status = self.api_v1.update_status(status=text, media_ids=[media_id])
                     else:
-                        self.api_v1.update_status(status=text)
-                    logger.info("Tweet posted successfully via V1.1 Fallback!")
-                    return True
+                        status = self.api_v1.update_status(status=text)
+                    logger.info(f"Tweet posted successfully via V1.1 Fallback! ID: {status.id}")
+                    return str(status.id)
                 except Exception as v1_e:
                     logger.error(f"V1.1 Fallback also failed: {v1_e}")
 
-            return False
+            return None
+
+    def fetch_tweet_metrics(self, tweet_ids):
+        """
+        Fetches public metrics (likes, retweets, replies, quotes) for a list of tweet IDs.
+        Returns a dictionary mapping tweet_id -> metrics object.
+        """
+        if not self.client:
+            logger.warning("Twitter Client not initialized. Skipping metrics fetch.")
+            return {}
+
+        metrics_map = {}
+
+        # Batch requests up to 100 IDs (API limit)
+        chunk_size = 100
+        for i in range(0, len(tweet_ids), chunk_size):
+            chunk = tweet_ids[i:i + chunk_size]
+            try:
+                response = self.client.get_tweets(
+                    ids=chunk,
+                    tweet_fields=["public_metrics", "created_at"]
+                )
+
+                if response.data:
+                    for tweet in response.data:
+                        metrics_map[str(tweet.id)] = {
+                            "likes": tweet.public_metrics.get("like_count", 0),
+                            "retweets": tweet.public_metrics.get("retweet_count", 0),
+                            "replies": tweet.public_metrics.get("reply_count", 0),
+                            "quotes": tweet.public_metrics.get("quote_count", 0),
+                            "impressions": tweet.public_metrics.get("impression_count", 0), # Often 0/unavailable on Basic Tier
+                            "created_at": tweet.created_at
+                        }
+            except Exception as e:
+                logger.error(f"Failed to fetch metrics for chunk {chunk}: {e}")
+
+        return metrics_map
 
 if __name__ == "__main__":
     # Test
     pub = TwitterPublisher()
-    pub.post_tweet("🤖 Hello World! This is a test from Sentix Bot.")
+    # pub.post_tweet("🤖 Hello World! This is a test from Sentix Bot.")
