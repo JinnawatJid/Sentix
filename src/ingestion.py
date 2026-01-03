@@ -47,6 +47,7 @@ class TwitterClient:
             tweets = []
             if response.data:
                 for t in response.data[:count]:
+                    logger.info(f"Fetched Tweet ID {t.id} from @{username}: {t.text[:50]}...")
                     tweets.append({
                         "title": f"Tweet from @{username}",
                         "text": t.text,
@@ -109,6 +110,9 @@ class IngestionModule:
                     "source": "CoinDesk",
                     "id": entry.link
                 })
+
+            if news_items:
+                logger.info(f"Successfully fetched {len(news_items)} items from CoinDesk RSS.")
             return news_items
         except Exception as e:
             logger.error(f"RSS Fetch Error: {e}")

@@ -21,6 +21,7 @@ from src.memory import MemoryModule
 from src.agent import AnalysisAgent
 from src.visualizer import Visualizer
 from src.publisher import TwitterPublisher
+from src.logging_handlers import DBHandler # Import custom handler
 from datetime import datetime
 
 # Initialize DB
@@ -40,8 +41,13 @@ app.add_middleware(
 # Templates
 templates = Jinja2Templates(directory="src/web/templates")
 
-# Logger
+# Configure Root Logger to use DBHandler
 logging.basicConfig(level=logging.INFO)
+root_logger = logging.getLogger()
+# Avoid adding duplicates if reloaded
+if not any(isinstance(h, DBHandler) for h in root_logger.handlers):
+    root_logger.addHandler(DBHandler())
+
 logger = logging.getLogger("WebDashboard")
 
 # --- BOT INSTANCE ---
@@ -69,7 +75,7 @@ class BotController:
             # 1. Fetch
             items = self.ingestion.fetch_news()
             if not items:
-                self._log(db, "INFO", "No news items found.")
+                logger.info("No news items found.")
                 self.last_run_status = "Finished (No News)"
                 return
 
@@ -82,7 +88,7 @@ class BotController:
                     break
 
             if not target_item:
-                self._log(db, "INFO", "No new unprocessed items.")
+                logger.info("No new unprocessed items.")
                 self.last_run_status = "Finished (No New Items)"
                 return
 
@@ -135,28 +141,21 @@ class BotController:
                     )
                     db.add(engagement)
 
-                    self._log(db, "INFO", f"Published tweet {tweet_id} for {item_id}", {"sentiment": sentiment, "tweet_id": tweet_id})
+                    logger.info(f"Published tweet {tweet_id} for {item_id}", extra={"context": {"sentiment": sentiment, "tweet_id": tweet_id}})
                     self.last_run_status = "Success"
                 else:
-                    self._log(db, "ERROR", "Failed to publish tweet")
+                    logger.error("Failed to publish tweet")
                     self.last_run_status = "Failed (Publish Error)"
 
                 db.commit()
 
             except Exception as e:
-                logger.error(f"Analysis Error: {e}")
-                self._log(db, "ERROR", f"Analysis/Publishing Error: {e}")
+                logger.error(f"Analysis/Publishing Error: {e}")
                 self.last_run_status = "Failed (Error)"
 
         except Exception as e:
             logger.error(f"Cycle Error: {e}")
-            self._log(db, "ERROR", f"Cycle Error: {e}")
             self.last_run_status = "Failed (Exception)"
-
-    def _log(self, db, level, msg, context=None):
-        log = BotLog(level=level, message=msg, context=context)
-        db.add(log)
-        db.commit()
 
     def update_metrics(self, db: Session):
         """Fetch latest metrics for recent tweets"""
