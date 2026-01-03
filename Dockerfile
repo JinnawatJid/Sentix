@@ -16,4 +16,8 @@ RUN playwright install --with-deps chromium
 
 COPY . .
 
+# Expose port for the web server
+EXPOSE 8000
+
+# Use python to run main.py which starts uvicorn
 CMD ["python", "main.py"]

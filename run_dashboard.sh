@@ -1,0 +1,6 @@
+#!/bin/bash
+echo "Starting Sentix Bot Dashboard..."
+echo "Installing dependencies..."
+pip install -r requirements.txt
+echo "Starting Web Server..."
+python main.py
