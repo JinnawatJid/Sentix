@@ -81,14 +81,19 @@ class IngestionModule:
         all_news = []
 
         # 1. Try X API
-        # We try to get news from WatcherGuru or CoinDesk
-        twitter_news = self.twitter_client.fetch_tweets("WatcherGuru", count=2)
+        # We try to get news from WatcherGuru and CoinDesk
+        wg_news = self.twitter_client.fetch_tweets("WatcherGuru", count=2)
+        if wg_news:
+            all_news.extend(wg_news)
 
-        if twitter_news:
-            logger.info(f"Successfully fetched {len(twitter_news)} tweets from X API.")
-            all_news.extend(twitter_news)
+        cd_news = self.twitter_client.fetch_tweets("CoinDesk", count=2)
+        if cd_news:
+            all_news.extend(cd_news)
+
+        if all_news:
+            logger.info(f"Successfully fetched {len(all_news)} tweets from X API.")
         else:
-            logger.info("X API failed or returned no data. Switching to RSS Fallback.")
+            logger.info("X API failed or returned no data from any source. Switching to RSS Fallback.")
             # 2. Fallback to RSS
             rss_news = self.fetch_coindesk_news()
             all_news.extend(rss_news)
