@@ -16,11 +16,17 @@ class TwitterClient:
         # For Free Tier reading (user timeline) is usually restricted, but we try anyway.
         self.bearer_token = os.getenv("TWITTER_BEARER_TOKEN")
         self.client = None
+        self.rate_limit_hit = False
+
         if self.bearer_token:
             try:
                 self.client = tweepy.Client(bearer_token=self.bearer_token)
             except Exception as e:
                 logger.error(f"Failed to initialize Twitter Client: {e}")
+
+    def reset_rate_limit(self):
+        """Resets the rate limit flag."""
+        self.rate_limit_hit = False
 
     def fetch_tweets(self, username, count=2):
         """
@@ -64,6 +70,7 @@ class TwitterClient:
             return None # Signal to trigger fallback
         except tweepy.errors.TooManyRequests as e:
             logger.warning(f"X API Rate Limit Hit (429). {e}")
+            self.rate_limit_hit = True
             return None
         except Exception as e:
             logger.error(f"X API General Error: {e}")
@@ -79,16 +86,27 @@ class IngestionModule:
         Main entry point. Tries X API first, then falls back to RSS.
         """
         all_news = []
+        self.twitter_client.reset_rate_limit()
 
         # 1. Try X API
         # We try to get news from WatcherGuru and CoinDesk
+
+        # Fetch WatcherGuru
         wg_news = self.twitter_client.fetch_tweets("WatcherGuru", count=2)
         if wg_news:
             all_news.extend(wg_news)
 
-        cd_news = self.twitter_client.fetch_tweets("CoinDesk", count=2)
-        if cd_news:
-            all_news.extend(cd_news)
+        # Check for rate limit before proceeding
+        if self.twitter_client.rate_limit_hit:
+            logger.warning("Rate limit hit during first fetch. Skipping subsequent Twitter sources.")
+        else:
+            # Add delay to respect rate limits
+            time.sleep(2)
+
+            # Fetch CoinDesk
+            cd_news = self.twitter_client.fetch_tweets("CoinDesk", count=2)
+            if cd_news:
+                all_news.extend(cd_news)
 
         if all_news:
             logger.info(f"Successfully fetched {len(all_news)} tweets from X API.")
