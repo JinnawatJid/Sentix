@@ -53,20 +53,22 @@ class TestMultiSourceIngestion(unittest.TestCase):
 
     def test_agent_prompt_structure(self):
         """
-        Verifies that the agent constructs the prompt correctly with a list of news.
+        Verifies that the agent constructs the prompt correctly with separate candidate and context lists.
         """
         agent = AnalysisAgent()
         # Mock client to avoid API call
         agent.client = MagicMock()
         agent.client.models.generate_content.return_value.text = '{"sentiment": "NEUTRAL", "reasoning": "Test", "tweet": "Test Tweet"}'
 
-        mock_news = [
-            {"title": "News A", "source": "Source A", "summary": "Sum A"},
-            {"title": "News B", "source": "Source B", "summary": "Sum B"}
+        mock_candidates = [
+            {"title": "New Event A", "source": "Source A", "summary": "Sum A"}
+        ]
+        mock_context = [
+             {"title": "Old Event B", "source": "Source B", "summary": "Sum B"}
         ]
 
         # We intercept the call to generate_content to inspect the prompt
-        agent.analyze_situation(mock_news, "Whale Data", "History")
+        agent.analyze_situation(mock_candidates, mock_context, "Whale Data", "History")
 
         call_args = agent.client.models.generate_content.call_args
         prompt_sent = call_args[1]['contents']
@@ -74,9 +76,11 @@ class TestMultiSourceIngestion(unittest.TestCase):
         print("\n--- Generated Prompt Snippet ---")
         print(prompt_sent[:500] + "...")
 
-        self.assertIn("Source A", prompt_sent)
-        self.assertIn("Source B", prompt_sent)
-        self.assertIn("Cross-Verification (CRITICAL)", prompt_sent)
+        self.assertIn("NEW CANDIDATE STORIES", prompt_sent)
+        self.assertIn("OLDER CONTEXT STORIES", prompt_sent)
+        self.assertIn("New Event A", prompt_sent)
+        self.assertIn("Old Event B", prompt_sent)
+        self.assertIn("Crypto-Native Persona", prompt_sent)
 
 if __name__ == '__main__':
     unittest.main()
