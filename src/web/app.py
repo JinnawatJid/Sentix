@@ -79,20 +79,32 @@ class BotController:
                 self.last_run_status = "Finished (No News)"
                 return
 
-            # Check DB for duplicates
-            target_item = None
+            # Check DB for processed items to avoid reprocessing old news
+            # For cross-verification, we want to look at NEW items (candidates)
+            # but also keep OLD items (context) for verification.
+
+            new_items = []
+            context_items = []
+
             for item in items:
                 item_id = item.get('id', item.get('link'))
                 if not db.query(ProcessedNews).filter(ProcessedNews.id == item_id).first():
-                    target_item = item
-                    break
+                    new_items.append(item)
+                else:
+                    context_items.append(item)
 
-            if not target_item:
+            if not new_items:
                 logger.info("No new unprocessed items.")
                 self.last_run_status = "Finished (No New Items)"
                 return
 
-            # 2. Process
+            # We pass BOTH lists to the agent.
+            # - new_items: Candidates for the Tweet Topic.
+            # - context_items: Used only for cross-verification.
+
+            # Use the first new item as a proxy for the "Main Topic" for whale/market data?
+            # Or just grab BTC general data.
+            target_item = new_items[0]
             text_content = f"{target_item.get('title', '')} {target_item.get('summary', '')}"
             symbol = "BTC" if "BTC" in text_content or "Bitcoin" in text_content else "ETH"
 
@@ -102,14 +114,21 @@ class BotController:
 
             verification = f"Whale: {whale_data}\nPrice: {market_info['price']}"
 
-            # 3. Analyze
-            analysis_json = self.agent.analyze_situation(target_item, verification, history)
+            # 3. Analyze (BATCH MODE with Context Separation)
+            analysis_json = self.agent.analyze_situation(new_items, context_items, verification, history)
+
             try:
                 clean_json = analysis_json.replace("```json", "").replace("```", "").strip()
                 result = json.loads(clean_json)
                 tweet_text = result.get('tweet')
                 sentiment = result.get('sentiment')
                 knowledge_base_entry = result.get('knowledge_base_entry')
+
+                # Check for "Neutral/No Action" response
+                if "No verified new stories" in result.get('reasoning', '') or "No cross-verified significant events" in tweet_text:
+                    logger.info("Agent decided not to tweet (Unverified/Neutral).")
+                    self.last_run_status = "Finished (Skipped - Unverified)"
+                    return
 
                 # 4. Visualize
                 chart_path = self.visualizer.capture_chart(symbol)
@@ -118,26 +137,27 @@ class BotController:
                 tweet_id = self.publisher.post_tweet(tweet_text, chart_path)
 
                 if tweet_id:
-                    # Save to DB
-                    item_id = target_item.get('id', target_item.get('link'))
+                    # Save NEW items to DB to mark them as processed
+                    # We mark ALL items in the batch as processed to avoid re-triggering?
+                    # Or just the 'new_items'? Let's mark new_items.
+                    for item in new_items:
+                        item_id = item.get('id', item.get('link'))
+                        # Prevent duplicates just in case
+                        if not db.query(ProcessedNews).filter(ProcessedNews.id == item_id).first():
+                             news_entry = ProcessedNews(
+                                id=item_id,
+                                title=item.get('title'),
+                                source=item.get('source', 'Unknown'),
+                                sentiment=sentiment
+                            )
+                             db.add(news_entry)
 
-                    # Store News
-                    news_entry = ProcessedNews(
-                        id=item_id,
-                        title=target_item.get('title'),
-                        source=target_item.get('source', 'Unknown'),
-                        sentiment=sentiment
-                    )
-
-                    # Prevent integrity error if item already exists (rare due to check above, but safe)
-                    existing = db.query(ProcessedNews).filter(ProcessedNews.id == item_id).first()
-                    if not existing:
-                        db.add(news_entry)
-
-                    # Track Engagement
+                    # Track Engagement (Link to the first item for simplicity, or just create a record)
+                    # We link to the 'primary' item ID
+                    primary_id = target_item.get('id', target_item.get('link'))
                     engagement = TweetEngagement(
                         tweet_id=str(tweet_id),
-                        news_id=item_id,
+                        news_id=primary_id,
                         posted_at=datetime.utcnow()
                     )
                     db.add(engagement)
@@ -157,7 +177,7 @@ class BotController:
                         )
                     # --------------------------------------
 
-                    logger.info(f"Published tweet {tweet_id} for {item_id}", extra={"context": {"sentiment": sentiment, "tweet_id": tweet_id}})
+                    logger.info(f"Published tweet {tweet_id} for {primary_id}", extra={"context": {"sentiment": sentiment, "tweet_id": tweet_id}})
                     self.last_run_status = "Success"
                 else:
                     logger.error("Failed to publish tweet")
