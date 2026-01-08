@@ -122,6 +122,7 @@ class BotController:
                 result = json.loads(clean_json)
                 tweet_text = result.get('tweet')
                 sentiment = result.get('sentiment')
+                knowledge_base_entry = result.get('knowledge_base_entry')
 
                 # Check for "Neutral/No Action" response
                 if "No verified new stories" in result.get('reasoning', '') or "No cross-verified significant events" in tweet_text:
@@ -161,7 +162,22 @@ class BotController:
                     )
                     db.add(engagement)
 
-                    logger.info(f"Published tweet {tweet_id}", extra={"context": {"sentiment": sentiment, "tweet_id": tweet_id}})
+                    # --- KEY CHANGE: RAG MEMORY STORAGE ---
+                    # Save the "Long Sentence" context to Vector DB
+                    if knowledge_base_entry:
+                        logger.info(f"Saving Context to Memory: {knowledge_base_entry[:50]}...")
+                        self.memory.store_news_event(
+                            text=knowledge_base_entry,
+                            metadata={
+                                "source": target_item.get('source', 'Unknown'),
+                                "timestamp": datetime.utcnow().isoformat(),
+                                "sentiment": sentiment,
+                                "raw_title": target_item.get('title', '')
+                            }
+                        )
+                    # --------------------------------------
+
+                    logger.info(f"Published tweet {tweet_id} for {primary_id}", extra={"context": {"sentiment": sentiment, "tweet_id": tweet_id}})
                     self.last_run_status = "Success"
                 else:
                     logger.error("Failed to publish tweet")

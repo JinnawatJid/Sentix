@@ -125,6 +125,8 @@ class AnalysisAgent:
         3. **Analysis:**
            - Determine the sentiment (BULLISH, BEARISH, or NEUTRAL).
            - Focus on the **IMPACT** (Why this matters for price/market), not just a summary.
+           - Generate a "Knowledge Base Entry" (RAG Context). This must be a long, standalone sentence or two that synthesizes the Event, the Reasoning, and the Market Outcome. This will be saved to your long-term memory to help you analyze future events.
+             Example: "On [Date], Bitcoin dropped 5% following unexpected inflation data, but Whale verification showed accumulation, suggesting a fakeout which later resulted in a reversal."
            - {prompt_instruction}
         
         TWEET FORMAT:
@@ -142,7 +144,8 @@ class AnalysisAgent:
         {{
             "sentiment": "BULLISH/BEARISH/NEUTRAL",
             "reasoning": "Explain which story was chosen and which sources confirmed it.",
-            "tweet": "The formatted tweet string as described above."
+            "tweet": "The formatted tweet string as described above.",
+            "knowledge_base_entry": "The detailed long sentence for RAG memory."
         }}
         
         Respond ONLY with the JSON string. Do not use Markdown formatting blocks (```json ... ```).
