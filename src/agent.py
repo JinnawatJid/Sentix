@@ -97,6 +97,8 @@ class AnalysisAgent:
         - Determine the sentiment (BULLISH, BEARISH, or NEUTRAL).
         - Cross-reference the news with the whale data. (e.g., Bad news + Whales selling = Verified Panic. Bad news + Whales Buying = Bullish Divergence/Fakeout).
         - Use the historical context to see if this pattern has happened before.
+        - Generate a "Knowledge Base Entry" (RAG Context). This must be a long, standalone sentence or two that synthesizes the Event, the Reasoning, and the Market Outcome. This will be saved to your long-term memory to help you analyze future events.
+          Example: "On [Date], Bitcoin dropped 5% following unexpected inflation data, but Whale verification showed accumulation, suggesting a fakeout which later resulted in a reversal."
         - {prompt_instruction}
         
         TWEET FORMAT:
@@ -114,7 +116,8 @@ class AnalysisAgent:
         {{
             "sentiment": "BULLISH/BEARISH/NEUTRAL",
             "reasoning": "Brief explanation of why.",
-            "tweet": "The formatted tweet string as described above."
+            "tweet": "The formatted tweet string as described above.",
+            "knowledge_base_entry": "The detailed long sentence for RAG memory."
         }}
         
         Respond ONLY with the JSON string. Do not use Markdown formatting blocks (```json ... ```).

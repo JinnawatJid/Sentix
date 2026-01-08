@@ -109,6 +109,7 @@ class BotController:
                 result = json.loads(clean_json)
                 tweet_text = result.get('tweet')
                 sentiment = result.get('sentiment')
+                knowledge_base_entry = result.get('knowledge_base_entry')
 
                 # 4. Visualize
                 chart_path = self.visualizer.capture_chart(symbol)
@@ -140,6 +141,21 @@ class BotController:
                         posted_at=datetime.utcnow()
                     )
                     db.add(engagement)
+
+                    # --- KEY CHANGE: RAG MEMORY STORAGE ---
+                    # Save the "Long Sentence" context to Vector DB
+                    if knowledge_base_entry:
+                        logger.info(f"Saving Context to Memory: {knowledge_base_entry[:50]}...")
+                        self.memory.store_news_event(
+                            text=knowledge_base_entry,
+                            metadata={
+                                "source": target_item.get('source', 'Unknown'),
+                                "timestamp": datetime.utcnow().isoformat(),
+                                "sentiment": sentiment,
+                                "raw_title": target_item.get('title', '')
+                            }
+                        )
+                    # --------------------------------------
 
                     logger.info(f"Published tweet {tweet_id} for {item_id}", extra={"context": {"sentiment": sentiment, "tweet_id": tweet_id}})
                     self.last_run_status = "Success"
