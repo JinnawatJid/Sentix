@@ -71,56 +71,65 @@ class TwitterClient:
 
 class IngestionModule:
     def __init__(self):
-        self.rss_url = "https://www.coindesk.com/arc/outboundfeeds/rss/"
+        # Extended RSS Sources
+        self.rss_feeds = {
+            "CoinDesk": "https://www.coindesk.com/arc/outboundfeeds/rss/",
+            "CoinTelegraph": "https://cointelegraph.com/rss",
+            "TheBlock": "https://www.theblock.co/rss",
+            "Decrypt": "https://decrypt.co/feed"
+        }
         self.twitter_client = TwitterClient()
 
     def fetch_news(self):
         """
-        Main entry point. Tries X API first, then falls back to RSS.
+        Fetches news from ALL available sources (Twitter + RSS) to allow for cross-verification.
         """
         all_news = []
 
-        # 1. Try X API
-        # We try to get news from WatcherGuru and CoinDesk
-        wg_news = self.twitter_client.fetch_tweets("WatcherGuru", count=2)
-        if wg_news:
-            all_news.extend(wg_news)
+        # 1. Fetch from Twitter Sources (if available/limit not hit)
+        twitter_sources = ["WatcherGuru", "CoinDesk"] # Could add others but kept simple for now
+        for handle in twitter_sources:
+            try:
+                tweets = self.twitter_client.fetch_tweets(handle, count=2)
+                if tweets:
+                    all_news.extend(tweets)
+                # Polite delay between calls
+                time.sleep(1)
+            except Exception as e:
+                logger.error(f"Error fetching tweets for {handle}: {e}")
 
-        cd_news = self.twitter_client.fetch_tweets("CoinDesk", count=2)
-        if cd_news:
-            all_news.extend(cd_news)
+        # 2. Fetch from RSS Sources (Reliable Backbone)
+        for source_name, url in self.rss_feeds.items():
+            rss_items = self.fetch_rss_feed(source_name, url)
+            if rss_items:
+                all_news.extend(rss_items)
 
-        if all_news:
-            logger.info(f"Successfully fetched {len(all_news)} tweets from X API.")
-        else:
-            logger.info("X API failed or returned no data from any source. Switching to RSS Fallback.")
-            # 2. Fallback to RSS
-            rss_news = self.fetch_coindesk_news()
-            all_news.extend(rss_news)
-
+        logger.info(f"Total aggregated news items: {len(all_news)}")
         return all_news
 
-    def fetch_coindesk_news(self):
-        """Fetches the latest news from CoinDesk RSS feed."""
-        logger.info("Fetching CoinDesk RSS feed...")
+    def fetch_rss_feed(self, source_name, url):
+        """Fetches and parses a generic RSS feed."""
+        logger.info(f"Fetching {source_name} RSS feed...")
         try:
-            feed = feedparser.parse(self.rss_url)
+            feed = feedparser.parse(url)
             news_items = []
-            for entry in feed.entries[:5]: # Get top 5
+            for entry in feed.entries[:3]: # Get top 3 from each to avoid noise
+                # Handle inconsistent field names
+                summary = getattr(entry, 'summary', '')
+                if not summary and hasattr(entry, 'description'):
+                    summary = entry.description
+
                 news_items.append({
                     "title": entry.title,
                     "link": entry.link,
-                    "published": entry.published,
-                    "summary": entry.summary,
-                    "source": "CoinDesk",
+                    "published": getattr(entry, 'published', datetime.now().isoformat()),
+                    "summary": summary,
+                    "source": source_name,
                     "id": entry.link
                 })
-
-            if news_items:
-                logger.info(f"Successfully fetched {len(news_items)} items from CoinDesk RSS.")
             return news_items
         except Exception as e:
-            logger.error(f"RSS Fetch Error: {e}")
+            logger.error(f"RSS Fetch Error ({source_name}): {e}")
             return []
 
 class WhaleMonitor:
@@ -201,7 +210,7 @@ if __name__ == "__main__":
     items = ingestor.fetch_news()
     print(f"Fetched {len(items)} items.")
     if items:
-        print(f"Sample: {items[0]['title']}")
+        print(f"Sample: {items[0]['title']} ({items[0]['source']})")
     
     whale = WhaleMonitor()
     print("\n--- Testing Whale Monitor ---")

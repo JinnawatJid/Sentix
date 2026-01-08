@@ -12,21 +12,21 @@ logger = logging.getLogger("AnalysisAgent")
 LOCALIZATION = {
     "en": {
         "headers": {
-            "summary": "📝 Summary",
-            "fund_flow": "💸 Fund Flow",
-            "sentiment": "🚀 Sentiment"
+            "summary": "📰 Consensus",
+            "impact": "🧠 Impact",
+            "sentiment": "🚀 Outlook"
         },
-        "fallback": "📝 Summary: Market movement detected.\n\n💸 Fund Flow: Analyzing on-chain data.\n\n🚀 Sentiment: NEUTRAL 🤖\n\n#Bitcoin #Crypto #Sentix",
-        "prompt_instruction": "Ensure the tweet is in English."
+        "fallback": "📰 Consensus: Market movement detected.\n\n🧠 Impact: Analyzing on-chain data.\n\n🚀 Outlook: NEUTRAL 🤖\n\n#Bitcoin #Crypto #Sentix",
+        "prompt_instruction": "Ensure the tweet is in English. Use a professional but engaging crypto-native persona."
     },
     "th": {
         "headers": {
-            "summary": "📝 สรุป",
-            "fund_flow": "💸 กระแสเงินทุน",
-            "sentiment": "🚀 ความรู้สึก"
+            "summary": "📢 ข่าวกรอง",
+            "impact": "🧠 วิเคราะห์ผลกระทบ",
+            "sentiment": "🚀 แนวโน้ม"
         },
-        "fallback": "📝 สรุป: ตรวจพบความเคลื่อนไหวของตลาด\n\n💸 กระแสเงินทุน: กำลังวิเคราะห์ข้อมูล On-chain\n\n🚀 ความรู้สึก: เป็นกลาง (NEUTRAL) 🤖\n\n#Bitcoin #Crypto #Sentix",
-        "prompt_instruction": "Translate the tweet content to Thai. Translate the headers as specified below. Keep hashtags in English (e.g. #Bitcoin #Crypto)."
+        "fallback": "📢 ข่าวกรอง: ตรวจพบความเคลื่อนไหวของตลาด\n\n🧠 วิเคราะห์ผลกระทบ: กำลังวิเคราะห์ข้อมูล On-chain\n\n🚀 แนวโน้ม: เป็นกลาง (NEUTRAL) 🤖\n\n#Bitcoin #Crypto #Sentix",
+        "prompt_instruction": "Translate the tweet content to Thai. Use a 'Crypto-Native' persona (engaging, insightful, slang allowed but professional). Explicitly state the Confidence Score (level of cross-verification) in the first section. Focus on the impact."
     }
 }
 
@@ -67,9 +67,10 @@ class AnalysisAgent:
         except Exception as e:
             logger.error(f"Error loading config.json: {e}. Defaulting to 'en'.")
 
-    def analyze_situation(self, news_item, whale_data, historical_context):
+    def analyze_situation(self, candidates, context_news, whale_data, historical_context):
         """
-        Analyzes the current news + whale data + history to determine sentiment and generate a tweet.
+        Analyzes a list of NEW candidates + OLD context news + whale data + history.
+        Only generates a tweet if a CANDIDATE story is cross-verified (either by another candidate or context).
         """
         if not self.client:
              return self._fallback_response("Missing API Key or Client Initialization Failed")
@@ -78,42 +79,69 @@ class AnalysisAgent:
         headers = loc["headers"]
         prompt_instruction = loc["prompt_instruction"]
 
+        # Format lists
+        candidates_text = ""
+        for i, item in enumerate(candidates):
+            title = item.get('title', item.get('text', 'Unknown Content'))
+            source = item.get('source', 'Unknown Source')
+            candidates_text += f"- Item {i+1}: [{source}] {title}\n"
+
+        context_text = ""
+        if context_news:
+            for i, item in enumerate(context_news):
+                title = item.get('title', item.get('text', 'Unknown Content'))
+                source = item.get('source', 'Unknown Source')
+                context_text += f"- Context {i+1}: [{source}] {title}\n"
+
         prompt = f"""
         You are 'Sentix', an elite crypto sentiment analyst AI.
         
-        TASK: Analyze the following data points to generate a trading signal and a viral tweet.
+        TASK: Analyze the following news data to generate a SINGLE high-quality trading signal and viral tweet.
+
+        1. **NEW CANDIDATE STORIES** (Potentially breaking news):
+        {candidates_text}
         
-        1. LIVE NEWS:
-        "{news_item.get('title', news_item.get('text', 'Unknown Content'))}"
-        (Summary: {news_item.get('summary', 'N/A')})
+        2. **OLDER CONTEXT STORIES** (Already processed, use for verification ONLY):
+        {context_text}
         
-        2. WHALE ALERT DATA (On-Chain Verification):
+        3. WHALE ALERT DATA (On-Chain Verification):
         "{whale_data}"
         
-        3. HISTORICAL CONTEXT (RAG Memory):
+        4. HISTORICAL CONTEXT (RAG Memory):
         "{historical_context}"
         
         INSTRUCTIONS:
-        - Determine the sentiment (BULLISH, BEARISH, or NEUTRAL).
-        - Cross-reference the news with the whale data. (e.g., Bad news + Whales selling = Verified Panic. Bad news + Whales Buying = Bullish Divergence/Fakeout).
-        - Use the historical context to see if this pattern has happened before.
-        - {prompt_instruction}
+        1. **Selection & Cross-Verification (CRITICAL):**
+           - You must select a story **FROM THE CANDIDATE LIST** as the main topic.
+           - Verify this story by finding matching reports in either the **CANDIDATE LIST** or the **CONTEXT LIST**.
+           - **RULE:** Only generate a tweet if the candidate story is confirmed by **at least 2 distinct sources** (e.g., Candidate Source A + Context Source B, or Candidate Source A + Candidate Source B).
+           - **DO NOT** generate a tweet about a story that appears ONLY in the Context list (we have already tweeted about it).
+           - If no candidate story meets the verification criteria, return NEUTRAL sentiment with reasoning "No verified new stories".
+
+        2. **Synthesis & Persona:**
+           - Adopt a **Crypto-Native Persona**: Be sharp, insightful, and engaging. Avoid robotic language.
+           - Calculate a **Confidence Score** (Low/Medium/High) based on the number of verifying sources.
+
+        3. **Analysis:**
+           - Determine the sentiment (BULLISH, BEARISH, or NEUTRAL).
+           - Focus on the **IMPACT** (Why this matters for price/market), not just a summary.
+           - {prompt_instruction}
         
         TWEET FORMAT:
         The tweet MUST strictly follow this format with these exact emojis and headers:
 
-        {headers['summary']}: [Brief summary of the news]
+        {headers['summary']}: [Synthesized Event + Confidence Score (e.g., 'Confidence: HIGH')]
 
-        {headers['fund_flow']}: [Mention the whale data/on-chain flows]
+        {headers['impact']}: [Deep analysis of the market impact. Why it matters. Fund flow context.]
 
-        {headers['sentiment']}: [BULLISH/BEARISH/NEUTRAL] [Optional: Diamond/Rocket emoji if bullish]
+        {headers['sentiment']}: [BULLISH/BEARISH/NEUTRAL] [Engaging closing line/Call to action]
 
         (Ensure the total length is under 280 characters. Use hashtags like #BTC #Crypto #Sentix at the very end or integrated if space permits, but prioritize the structure.)
 
         OUTPUT FORMAT (JSON):
         {{
             "sentiment": "BULLISH/BEARISH/NEUTRAL",
-            "reasoning": "Brief explanation of why.",
+            "reasoning": "Explain which story was chosen and which sources confirmed it.",
             "tweet": "The formatted tweet string as described above."
         }}
         
@@ -147,10 +175,15 @@ if __name__ == "__main__":
     agent = AnalysisAgent()
     print(f"Loaded Language: {agent.language}")
     
-    mock_news = {"title": "Bitcoin drops below $60k", "summary": "Market fears rise as inflation data disappoints."}
-    mock_whale = "🚨 2,000 BTC transferred from Binance to Unknown Wallet (Accumulation?)"
-    mock_history = "Date: 2023-08-01, Event: BTC dipped on inflation news but rebounded 5% next day."
+    candidates = [
+        {"title": "Bitcoin hits $60k", "source": "WatcherGuru", "summary": "Price up."}
+    ]
+    context = [
+        {"title": "Bitcoin surges past $59k", "source": "CoinDesk", "summary": "Rally continues."}
+    ]
+    mock_whale = "Whale Data"
+    mock_history = "History"
     
-    print("Testing Agent Analysis...")
-    result = agent.analyze_situation(mock_news, mock_whale, mock_history)
+    print("Testing Agent Analysis (Candidates + Context)...")
+    result = agent.analyze_situation(candidates, context, mock_whale, mock_history)
     print(result)
