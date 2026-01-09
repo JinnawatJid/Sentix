@@ -83,6 +83,8 @@
 
 *(Q&A Prep: "Why these specific sources?" -> "We balance **Speed** (WatcherGuru) with **Journalistic Integrity** (CoinDesk) and **Data Independence** (CoinGecko vs. Binance-owned CMC). We don't just want news; we want verified signal.")*
 
+*(Q&A Prep: "How do you define Speed/Accuracy?" -> "**Speed** is the latency delta between event and tweet (<5 mins for WatcherGuru). **Accuracy** is the ratio of headlines confirmed by on-chain data. **Independence** is freedom from exchange ownership.")*
+
 **Slide 5: The Brain (RAG)**
 "This is the most exciting CS element: **Retrieval-Augmented Generation (RAG)**. Most bots are amnesiac—they treat every event as new. Sentix remembers. When 'CPI Data' is released, it checks its vector database: *'How did the market react last time?'* It includes that historical context in its analysis. This reduces hallucination and improves signal quality."
 
