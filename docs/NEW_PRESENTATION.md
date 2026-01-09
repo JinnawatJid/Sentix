@@ -81,6 +81,8 @@
 **Slide 4: Ingestion (Technical)**
 "Technically, this is where we solved the 'Reliability' problem. Reliance on a single API (like Twitter) is dangerous. We implemented a 'Waterfall' ingestion system. If Twitter blocks us (Rate Limits), we instantly fall back to RSS feeds. If the 'Whale Alert' bot is down, we query the Bitcoin blockchain directly. The system always finds a way to get the truth."
 
+*(Q&A Prep: "Why these specific sources?" -> "We balance **Speed** (WatcherGuru) with **Journalistic Integrity** (CoinDesk) and **Data Independence** (CoinGecko vs. Binance-owned CMC). We don't just want news; we want verified signal.")*
+
 **Slide 5: The Brain (RAG)**
 "This is the most exciting CS element: **Retrieval-Augmented Generation (RAG)**. Most bots are amnesiac—they treat every event as new. Sentix remembers. When 'CPI Data' is released, it checks its vector database: *'How did the market react last time?'* It includes that historical context in its analysis. This reduces hallucination and improves signal quality."
 
