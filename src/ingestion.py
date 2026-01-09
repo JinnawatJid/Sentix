@@ -73,6 +73,7 @@ class IngestionModule:
     def __init__(self):
         # Extended RSS Sources
         self.rss_feeds = {
+            "WatcherGuru": "https://watcher.guru/news/feed",
             "CoinDesk": "https://www.coindesk.com/arc/outboundfeeds/rss/",
             "CoinTelegraph": "https://cointelegraph.com/rss",
             "TheBlock": "https://www.theblock.co/rss",
@@ -87,7 +88,9 @@ class IngestionModule:
         all_news = []
 
         # 1. Fetch from Twitter Sources (if available/limit not hit)
-        twitter_sources = ["WatcherGuru", "CoinDesk"] # Could add others but kept simple for now
+        # Removed WatcherGuru and CoinDesk from Twitter to save API limits.
+        # We rely on RSS feeds for these now.
+        twitter_sources = []
         for handle in twitter_sources:
             try:
                 tweets = self.twitter_client.fetch_tweets(handle, count=2)
@@ -134,22 +137,15 @@ class IngestionModule:
 
 class WhaleMonitor:
     def __init__(self):
-        self.twitter_client = TwitterClient()
+        # Twitter client removed to save API limits. Relying on direct On-Chain data.
+        pass
 
     def get_whale_movements(self, symbol="BTC"):
         """
-        Tries to get data from @whale_alert. 
-        Fallback: Uses blockchain.info to find large unconfirmed transactions.
+        Checks Blockchain.info for large unconfirmed transactions.
+        (Previously used Twitter @whale_alert, now removed to avoid rate limits).
         """
-        # 1. Try Twitter (X API)
-        tweets = self.twitter_client.fetch_tweets("whale_alert", count=3)
-        if tweets:
-            relevant = [t['text'] for t in tweets if symbol in t['text']]
-            if relevant:
-                return f"Recent Whale Alerts (Verified via X): {'; '.join(relevant)}"
-        
-        # 2. Fallback: Real On-Chain Data (Blockchain.info)
-        logger.info("Fallback: Checking Blockchain.info for large transactions...")
+        logger.info("Checking Blockchain.info for large transactions (Whale Monitor)...")
         try:
             # Fetch unconfirmed transactions
             url = "https://blockchain.info/unconfirmed-transactions?format=json"

@@ -30,12 +30,12 @@
 
 ### Slide 4: Deep Dive - Ingestion & Verification (The "Fetch")
 *   **Visual:** "The Funnel"
-    *   Top: Raw Tweets, RSS Feeds (Noise).
+    *   Top: RSS Feeds (WatcherGuru, CoinDesk, Decrypt, TheBlock).
     *   Middle: Cross-Verification Logic (Filter).
     *   Bottom: Verified Candidates (Signal).
 *   **Technical Highlight:**
-    *   **Hybrid Ingestion:** If Twitter Rate Limits (429) hit, system seamlessly switches to CoinDesk/Decrypt RSS.
-    *   **Truth Verification:** We don't trust text. We verify with **Numbers** (CoinGecko Price) and **Chain Data** (Whale transactions via Blockchain.info).
+    *   **API Efficiency:** We achieved **100% API Independence** for ingestion. We now rely exclusively on RSS feeds for news and direct Blockchain APIs for whale monitoring, bypassing Twitter Rate Limits completely.
+    *   **Truth Verification:** We don't trust text. We verify with **Numbers** (CoinGecko Price) and **Direct Chain Data** (Querying the Bitcoin Mempool via Blockchain.info).
 
 ### Slide 5: Deep Dive - Analysis & RAG Memory (The "Brain")
 *   **Visual:** A circular loop: `News Event` -> `Search Memory` -> `Analyze` -> `Store Outcome`.
@@ -100,9 +100,9 @@
 *   **File:** `src/ingestion.py`
 *   **Class:** `IngestionModule` & `WhaleMonitor`
 *   **Logic:**
-    *   `fetch_news()`: Orchestrates the "Twitter first, RSS second" priority.
-    *   `TwitterClient.fetch_tweets()`: Contains the `try/except` block for `tweepy.errors.TooManyRequests` (429).
-    *   `WhaleMonitor.get_whale_movements()`: Shows the fallback from `@whale_alert` (Twitter) to `blockchain.info` (Raw API).
+    *   `fetch_news()`: Aggregates from 5+ RSS feeds (including WatcherGuru, CoinDesk). Zero dependency on Twitter Reading API.
+    *   `TwitterClient.fetch_tweets()`: Logic is preserved for future use but currently inactive to save costs.
+    *   `WhaleMonitor.get_whale_movements()`: Directly queries `blockchain.info` (Raw API) to detect large transactions.
 
 ### **B. The Brain & RAG (The "Process" & "Learn")**
 *   **File:** `src/agent.py` & `src/memory.py`
