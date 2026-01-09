@@ -88,8 +88,9 @@ class IngestionModule:
         all_news = []
 
         # 1. Fetch from Twitter Sources (if available/limit not hit)
-        # Removed WatcherGuru from Twitter (moved to RSS) to save API limits.
-        twitter_sources = ["CoinDesk"]
+        # Removed WatcherGuru and CoinDesk from Twitter to save API limits.
+        # We rely on RSS feeds for these now.
+        twitter_sources = []
         for handle in twitter_sources:
             try:
                 tweets = self.twitter_client.fetch_tweets(handle, count=2)

@@ -18,11 +18,9 @@ This document outlines the external data sources used by Sentix to fetch news, v
     *   **Decrypt:** `https://decrypt.co/feed`
 
 ### B. X (Twitter) API (Secondary)
-*   **Role:** Secondary signal and specific institutional verification.
+*   **Role:** Currently unused for ingestion to preserve API limits.
 *   **Method:** `src/ingestion.py` -> `TwitterClient`
-*   **Key Accounts:**
-    *   `@CoinDesk`: Checked primarily for institutional confirmation.
-*   **Note:** Usage is minimized to avoid Rate Limits (429).
+*   **Status:** Ingestion is fully shifted to RSS feeds. The `TwitterClient` class remains available for future specific targeting if needed.
 
 ---
 
