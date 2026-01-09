@@ -60,3 +60,18 @@ This document outlines the external data sources used by Sentix to fetch news, v
 
 *   **Google Gemini API:** The "Processor" that analyzes the text sentiment and generates the tweet.
 *   **ChromaDB:** The "Long-term Memory" where the bot queries its own past experiences to find historical parallels (RAG).
+
+---
+
+## 5. Selection Rationale: Why These Sources?
+
+The crypto news landscape is vast. We selected this specific portfolio based on three pillars: **Speed, Veracity, and Independence.**
+
+### A. Speed vs. Accuracy Portfolio
+*   **WatcherGuru (Speed):** They are arguably the fastest "breaking news" outlet in crypto. They often tweet headlines seconds after an event. We use them as the "Trigger".
+*   **CoinDesk & The Block (Accuracy):** Speed is dangerous without verification. These outlets adhere to traditional journalistic standards. If WatcherGuru reports it, we check CoinDesk to see if it's confirmed or if it's a rumor.
+*   **Decrypt (Accessibility):** Provides excellent context and "explainer" style content, helping the AI understand the *implications* of technical news.
+
+### B. The "Ground Truth" Layer
+*   **CoinGecko (Independence):** Unlike CoinMarketCap (owned by Binance), CoinGecko is an independent data aggregator. This removes potential conflict-of-interest bias when reporting exchange-related news or token prices.
+*   **Blockchain.info (Raw Truth):** Social media can lie. The blockchain cannot. By querying the mempool directly, we bypass editorialized "Whale Alert" tweets (which can be delayed or filtered) and get a raw, unbiased view of capital flow.
