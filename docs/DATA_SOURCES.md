@@ -75,3 +75,15 @@ The crypto news landscape is vast. We selected this specific portfolio based on 
 ### B. The "Ground Truth" Layer
 *   **CoinGecko (Independence):** Unlike CoinMarketCap (owned by Binance), CoinGecko is an independent data aggregator. This removes potential conflict-of-interest bias when reporting exchange-related news or token prices.
 *   **Blockchain.info (Raw Truth):** Social media can lie. The blockchain cannot. By querying the mempool directly, we bypass editorialized "Whale Alert" tweets (which can be delayed or filtered) and get a raw, unbiased view of capital flow.
+
+### C. Qualitative Metrics & Definitions
+How we define our selection criteria:
+
+1.  **Speed (Latency Delta):** Defined as the time difference between an *On-Chain Event* and the *Social Publication*.
+    *   *WatcherGuru* consistently scores < 5 minutes on this metric.
+    *   *Traditional Media* often lags by 20-40 minutes.
+2.  **Accuracy (Verification Ratio):** Defined as the percentage of headlines that are corroborated by on-chain data or secondary confirmations within 1 hour.
+    *   *CoinDesk* maintains a high verification ratio due to editorial oversight.
+3.  **Independence (Ownership Bias):** A binary metric. Is the data provider owned by a market participant (Exchange/Fund)?
+    *   *CoinGecko* = Independent (Pass).
+    *   *CoinMarketCap* = Exchange-Owned (Fail).
