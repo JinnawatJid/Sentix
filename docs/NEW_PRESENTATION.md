@@ -30,12 +30,12 @@
 
 ### Slide 4: Deep Dive - Ingestion & Verification (The "Fetch")
 *   **Visual:** "The Funnel"
-    *   Top: Raw Tweets, RSS Feeds (Noise).
+    *   Top: RSS Feeds (WatcherGuru, CoinDesk) + Tweets (Noise).
     *   Middle: Cross-Verification Logic (Filter).
     *   Bottom: Verified Candidates (Signal).
 *   **Technical Highlight:**
-    *   **Hybrid Ingestion:** If Twitter Rate Limits (429) hit, system seamlessly switches to CoinDesk/Decrypt RSS.
-    *   **Truth Verification:** We don't trust text. We verify with **Numbers** (CoinGecko Price) and **Chain Data** (Whale transactions via Blockchain.info).
+    *   **API Efficiency:** We prioritized RSS feeds (WatcherGuru, Decrypt) as the primary signal to bypass Twitter API rate limits entirely.
+    *   **Truth Verification:** We don't trust text. We verify with **Numbers** (CoinGecko Price) and **Direct Chain Data** (Querying the Bitcoin Mempool via Blockchain.info instead of relying on Whale Alert tweets).
 
 ### Slide 5: Deep Dive - Analysis & RAG Memory (The "Brain")
 *   **Visual:** A circular loop: `News Event` -> `Search Memory` -> `Analyze` -> `Store Outcome`.
@@ -100,9 +100,9 @@
 *   **File:** `src/ingestion.py`
 *   **Class:** `IngestionModule` & `WhaleMonitor`
 *   **Logic:**
-    *   `fetch_news()`: Orchestrates the "Twitter first, RSS second" priority.
+    *   `fetch_news()`: Aggregates from 5+ RSS feeds (including WatcherGuru) and limited Twitter sources.
     *   `TwitterClient.fetch_tweets()`: Contains the `try/except` block for `tweepy.errors.TooManyRequests` (429).
-    *   `WhaleMonitor.get_whale_movements()`: Shows the fallback from `@whale_alert` (Twitter) to `blockchain.info` (Raw API).
+    *   `WhaleMonitor.get_whale_movements()`: Directly queries `blockchain.info` (Raw API) to detect large transactions, removing dependency on Twitter bots.
 
 ### **B. The Brain & RAG (The "Process" & "Learn")**
 *   **File:** `src/agent.py` & `src/memory.py`
