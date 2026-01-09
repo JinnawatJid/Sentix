@@ -122,6 +122,9 @@ class IngestionModule:
                 if not summary and hasattr(entry, 'description'):
                     summary = entry.description
 
+                # Explicit logging for dashboard visibility
+                logger.info(f"[{source_name}] Found: {entry.title}")
+
                 news_items.append({
                     "title": entry.title,
                     "link": entry.link,
