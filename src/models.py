@@ -36,3 +36,24 @@ class TweetEngagement(Base):
     impressions = Column(Integer, default=0) # If available
 
     last_updated = Column(DateTime, default=datetime.utcnow)
+
+class DecisionTrace(Base):
+    __tablename__ = "decision_traces"
+
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    # Input Data Snapshot
+    clusters_found = Column(JSON) # Summary of all clusters found in this cycle
+
+    # Selected Topic Info
+    topic = Column(String) # The representative title of the chosen story
+    verification_score = Column(Integer) # How many distinct sources confirmed it
+    sources_list = Column(JSON) # List of source names (e.g. ["CoinDesk", "WatcherGuru"])
+
+    # AI Logic
+    ai_reasoning = Column(Text) # The 'reasoning' field from Gemini
+
+    # Outcome
+    generated_tweet = Column(Text)
+    verification_status = Column(String) # "VERIFIED" (>=2 sources) or "UNVERIFIED"

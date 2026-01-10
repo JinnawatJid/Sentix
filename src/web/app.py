@@ -14,7 +14,7 @@ import os
 import json
 
 from src.database import get_db, engine, Base
-from src.models import ProcessedNews, BotLog, TweetEngagement
+from src.models import ProcessedNews, BotLog, TweetEngagement, DecisionTrace
 # Import the main bot logic (We will refactor main.py to be importable or import classes directly)
 from src.ingestion import IngestionModule, WhaleMonitor, MarketData
 from src.memory import MemoryModule
@@ -81,54 +81,70 @@ class BotController:
 
             # Check DB for processed items to avoid reprocessing old news
             # For cross-verification, we want to look at NEW items (candidates)
-            # but also keep OLD items (context) for verification.
-
             new_items = []
-            context_items = []
-
             for item in items:
                 item_id = item.get('id', item.get('link'))
                 if not db.query(ProcessedNews).filter(ProcessedNews.id == item_id).first():
                     new_items.append(item)
-                else:
-                    context_items.append(item)
 
             if not new_items:
                 logger.info("No new unprocessed items.")
                 self.last_run_status = "Finished (No New Items)"
                 return
 
-            # We pass BOTH lists to the agent.
-            # - new_items: Candidates for the Tweet Topic.
-            # - context_items: Used only for cross-verification.
+            # 2. Verify (CLUSTERING)
+            logger.info(f"Clustering {len(new_items)} new items...")
+            clusters = self.ingestion.cluster_news(new_items)
 
-            # Use the first new item as a proxy for the "Main Topic" for whale/market data?
-            # Or just grab BTC general data.
-            target_item = new_items[0]
-            text_content = f"{target_item.get('title', '')} {target_item.get('summary', '')}"
-            symbol = "BTC" if "BTC" in text_content or "Bitcoin" in text_content else "ETH"
+            # Select the best cluster (Score > 1 preferred)
+            verified_cluster = None
+            for c in clusters:
+                if c['score'] >= 2:
+                    verified_cluster = c
+                    break
 
+            # Fallback: If no verified cluster, take the top one but mark as unverified?
+            # Strategy: Only tweet if verified. If not, skip.
+            if not verified_cluster:
+                logger.info("No cluster met the verification threshold (Score >= 2). Skipping cycle.")
+
+                # Record the attempt in DecisionTrace anyway for audit
+                trace = DecisionTrace(
+                    clusters_found=json.dumps([{ 'topic': c['topic'], 'score': c['score'], 'sources': c['sources'] } for c in clusters]),
+                    topic="None Selected",
+                    verification_score=0,
+                    sources_list=json.dumps([]),
+                    verification_status="SKIPPED",
+                    ai_reasoning="No cluster met verification threshold.",
+                    generated_tweet=""
+                )
+                db.add(trace)
+                db.commit()
+
+                self.last_run_status = "Finished (Skipped - Unverified)"
+                return
+
+            logger.info(f"Selected Cluster: {verified_cluster['topic']} (Score: {verified_cluster['score']})")
+
+            # 3. Analyze
+            # Gather auxiliary data
+            symbol = "BTC" if "BTC" in verified_cluster['topic'] or "Bitcoin" in verified_cluster['topic'] else "ETH"
             whale_data = self.whale_monitor.get_whale_movements(symbol)
             market_info = self.market_data.get_market_status(symbol)
-            history = self.memory.retrieve_context(text_content)
+            history = self.memory.retrieve_context(verified_cluster['topic'])
 
-            verification = f"Whale: {whale_data}\nPrice: {market_info['price']}"
+            verification_context = f"Whale: {whale_data}\nPrice: {market_info['price']}"
 
-            # 3. Analyze (BATCH MODE with Context Separation)
-            analysis_json = self.agent.analyze_situation(new_items, context_items, verification, history)
+            analysis_json = self.agent.analyze_situation(verified_cluster, verification_context, history)
 
             try:
                 clean_json = analysis_json.replace("```json", "").replace("```", "").strip()
                 result = json.loads(clean_json)
+
                 tweet_text = result.get('tweet')
                 sentiment = result.get('sentiment')
                 knowledge_base_entry = result.get('knowledge_base_entry')
-
-                # Check for "Neutral/No Action" response
-                if "No verified new stories" in result.get('reasoning', '') or "No cross-verified significant events" in tweet_text:
-                    logger.info("Agent decided not to tweet (Unverified/Neutral).")
-                    self.last_run_status = "Finished (Skipped - Unverified)"
-                    return
+                reasoning = result.get('reasoning')
 
                 # 4. Visualize
                 chart_path = self.visualizer.capture_chart(symbol)
@@ -136,13 +152,22 @@ class BotController:
                 # 5. Publish
                 tweet_id = self.publisher.post_tweet(tweet_text, chart_path)
 
+                # 6. Save Trace (Audit Log)
+                trace = DecisionTrace(
+                    clusters_found=json.dumps([{ 'topic': c['topic'], 'score': c['score'], 'sources': c['sources'] } for c in clusters]),
+                    topic=verified_cluster['topic'],
+                    verification_score=verified_cluster['score'],
+                    sources_list=json.dumps(verified_cluster['sources']),
+                    verification_status="VERIFIED" if verified_cluster['score'] >= 2 else "UNVERIFIED",
+                    ai_reasoning=reasoning,
+                    generated_tweet=tweet_text
+                )
+                db.add(trace)
+
                 if tweet_id:
-                    # Save NEW items to DB to mark them as processed
-                    # We mark ALL items in the batch as processed to avoid re-triggering?
-                    # Or just the 'new_items'? Let's mark new_items.
-                    for item in new_items:
+                    # Save NEW items in this cluster to DB
+                    for item in verified_cluster['items']:
                         item_id = item.get('id', item.get('link'))
-                        # Prevent duplicates just in case
                         if not db.query(ProcessedNews).filter(ProcessedNews.id == item_id).first():
                              news_entry = ProcessedNews(
                                 id=item_id,
@@ -152,9 +177,9 @@ class BotController:
                             )
                              db.add(news_entry)
 
-                    # Track Engagement (Link to the first item for simplicity, or just create a record)
-                    # We link to the 'primary' item ID
-                    primary_id = target_item.get('id', target_item.get('link'))
+                    # Track Engagement
+                    primary_item = verified_cluster['items'][0]
+                    primary_id = primary_item.get('id', primary_item.get('link'))
                     engagement = TweetEngagement(
                         tweet_id=str(tweet_id),
                         news_id=primary_id,
@@ -162,22 +187,19 @@ class BotController:
                     )
                     db.add(engagement)
 
-                    # --- KEY CHANGE: RAG MEMORY STORAGE ---
-                    # Save the "Long Sentence" context to Vector DB
+                    # Save RAG Memory
                     if knowledge_base_entry:
-                        logger.info(f"Saving Context to Memory: {knowledge_base_entry[:50]}...")
                         self.memory.store_news_event(
                             text=knowledge_base_entry,
                             metadata={
-                                "source": target_item.get('source', 'Unknown'),
+                                "source": "Aggregated",
                                 "timestamp": datetime.utcnow().isoformat(),
                                 "sentiment": sentiment,
-                                "raw_title": target_item.get('title', '')
+                                "raw_title": verified_cluster['topic']
                             }
                         )
-                    # --------------------------------------
 
-                    logger.info(f"Published tweet {tweet_id} for {primary_id}", extra={"context": {"sentiment": sentiment, "tweet_id": tweet_id}})
+                    logger.info(f"Published tweet {tweet_id}", extra={"context": {"sentiment": sentiment, "tweet_id": tweet_id}})
                     self.last_run_status = "Success"
                 else:
                     logger.error("Failed to publish tweet")
@@ -240,13 +262,13 @@ def get_logs(limit: int = 20, db: Session = Depends(get_db)):
     logs = db.query(BotLog).order_by(BotLog.timestamp.desc()).limit(limit).all()
     return logs
 
+@app.get("/api/audit")
+def get_audit_logs(limit: int = 50, db: Session = Depends(get_db)):
+    traces = db.query(DecisionTrace).order_by(DecisionTrace.timestamp.desc()).limit(limit).all()
+    return traces
+
 @app.get("/api/stats")
 def get_stats(db: Session = Depends(get_db)):
-    # Trigger metric update if needed (could be async, but quick enough here for small batches)
-    # For now, let's trust the background job to update it, or add an explicit update endpoint.
-    # To keep stats fresh, we'll try a quick update if it's been a while?
-    # Better: just return what we have.
-
     # Sentiment Distribution
     bullish = db.query(ProcessedNews).filter(ProcessedNews.sentiment == "BULLISH").count()
     bearish = db.query(ProcessedNews).filter(ProcessedNews.sentiment == "BEARISH").count()
@@ -275,6 +297,10 @@ from starlette.requests import Request
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/audit", response_class=HTMLResponse)
+def audit_page(request: Request):
+    return templates.TemplateResponse("audit.html", {"request": request})
 
 # Scheduler Logic
 def scheduler_loop():
