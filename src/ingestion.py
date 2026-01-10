@@ -5,6 +5,7 @@ import requests
 import logging
 import tweepy
 import os
+import difflib
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -138,6 +139,54 @@ class IngestionModule:
             logger.error(f"RSS Fetch Error ({source_name}): {e}")
             return []
 
+    def cluster_news(self, news_items):
+        """
+        Groups news items into clusters based on title similarity.
+        Returns a list of clusters, each containing:
+        - topic: Representative title
+        - items: List of news items
+        - sources: List of unique sources
+        - score: Count of unique sources
+        """
+        clusters = []
+
+        for item in news_items:
+            title = item.get('title', '')
+            added_to_cluster = False
+
+            for cluster in clusters:
+                # Compare with the cluster's representative topic
+                # Use SequenceMatcher for similarity
+                similarity = difflib.SequenceMatcher(None, title.lower(), cluster['topic'].lower()).ratio()
+
+                # Threshold for similarity (0.5 is loose, 0.7 is strict)
+                # News titles can vary slightly, so 0.45-0.5 is often a safe starting point for short headlines
+                if similarity > 0.45:
+                    cluster['items'].append(item)
+                    cluster['sources'].add(item['source'])
+                    added_to_cluster = True
+                    break
+
+            if not added_to_cluster:
+                # Create new cluster
+                clusters.append({
+                    "topic": title,
+                    "items": [item],
+                    "sources": {item['source']},
+                    "score": 1
+                })
+
+        # Finalize clusters (convert sets to lists, calculate scores)
+        final_clusters = []
+        for c in clusters:
+            c['sources'] = list(c['sources'])
+            c['score'] = len(c['sources'])
+            final_clusters.append(c)
+
+        # Sort by score (highest verification first)
+        final_clusters.sort(key=lambda x: x['score'], reverse=True)
+        return final_clusters
+
 class WhaleMonitor:
     def __init__(self):
         # Twitter client removed to save API limits. Relying on direct On-Chain data.
@@ -206,11 +255,18 @@ if __name__ == "__main__":
     # Test
     ingestor = IngestionModule()
     print("--- Testing Ingestion ---")
-    items = ingestor.fetch_news()
-    print(f"Fetched {len(items)} items.")
-    if items:
-        print(f"Sample: {items[0]['title']} ({items[0]['source']})")
     
+    # Mock data for clustering test
+    mock_news = [
+        {"title": "Bitcoin Hits $100k", "source": "SourceA"},
+        {"title": "BTC reaches 100,000 dollars", "source": "SourceB"},
+        {"title": "Ethereum upgrade coming", "source": "SourceC"},
+    ]
+    print("Clustering Mock Data...")
+    clusters = ingestor.cluster_news(mock_news)
+    for c in clusters:
+        print(f"Topic: {c['topic']} | Score: {c['score']} | Sources: {c['sources']}")
+
     whale = WhaleMonitor()
     print("\n--- Testing Whale Monitor ---")
     print(f"Whale Status: {whale.get_whale_movements('BTC')}")

@@ -1,8 +1,9 @@
 from sqlalchemy.orm import Session
 from src.database import SessionLocal, engine, Base
-from src.models import ProcessedNews, BotLog, TweetEngagement
+from src.models import ProcessedNews, BotLog, TweetEngagement, DecisionTrace
 from datetime import datetime, timedelta
 import random
+import json
 
 def seed_data():
     Base.metadata.create_all(bind=engine)
@@ -12,6 +13,7 @@ def seed_data():
     db.query(ProcessedNews).delete()
     db.query(TweetEngagement).delete()
     db.query(BotLog).delete()
+    db.query(DecisionTrace).delete()
 
     print("Seeding data...")
 
@@ -52,21 +54,15 @@ def seed_data():
         )
         db.add(engagement)
 
-    # 3. Mock Logs - UPDATED with detailed format
-    print("Generating logs with new format...")
+    # 3. Mock Logs
+    print("Generating logs...")
     base_time = datetime.utcnow() - timedelta(hours=1)
-
-    # Simulate a full cycle
     logs = [
         ("INFO", "Manual/Scheduled Run Started"),
-        ("INFO", "Ingestion: Attempting to fetch tweets from @WatcherGuru via X API..."),
-        ("INFO", "Ingestion: Fetched Tweet ID 12345 from @WatcherGuru: Bitcoin is breaking out! #BTC..."),
-        ("INFO", "Ingestion: Successfully fetched 1 tweets from X API."),
-        ("INFO", "Ingestion: Attempting to fetch tweets from @whale_alert via X API..."),
-        ("WARNING", "Ingestion: X API Rate Limit Hit (429). Too Many Requests"),
-        ("INFO", "Ingestion: X API failed or returned no data. Switching to RSS Fallback."),
         ("INFO", "Ingestion: Fetching CoinDesk RSS feed..."),
-        ("INFO", "Ingestion: Successfully fetched 5 items from CoinDesk RSS."),
+        ("INFO", "Ingestion: [CoinDesk] Found: Bitcoin ETF Approved"),
+        ("INFO", "Ingestion: Clustering 5 new items..."),
+        ("INFO", "WebDashboard: Selected Cluster: Bitcoin ETF (Score: 3)"),
         ("INFO", "WebDashboard: Published tweet 99999 for link_abc", {"context": {"sentiment": "BULLISH", "tweet_id": "99999"}})
     ]
 
@@ -80,9 +76,43 @@ def seed_data():
         )
         db.add(log)
 
+    # 4. Mock Decision Traces (The new feature!)
+    print("Generating Decision Traces (Audit Log)...")
+
+    # Trace 1: Verified
+    trace_verified = DecisionTrace(
+        timestamp=datetime.utcnow() - timedelta(minutes=30),
+        topic="Bitcoin ETF Approval",
+        verification_score=3,
+        sources_list=json.dumps(["CoinDesk", "WatcherGuru", "TheBlock"]),
+        verification_status="VERIFIED",
+        ai_reasoning="Consensus found across 3 major sources. Sentiment is clearly BULLISH. No contradictions found.",
+        generated_tweet="📰 Consensus: Bitcoin ETF Approved (Confidence: HIGH)\n\n🧠 Impact: Institutional floodgates open.\n\n🚀 Outlook: BULLISH [Source: CoinDesk] #BTC",
+        clusters_found=json.dumps([
+            {"topic": "Bitcoin ETF Approval", "score": 3, "sources": ["CoinDesk", "WatcherGuru", "TheBlock"]},
+            {"topic": "Solana Downtime", "score": 1, "sources": ["Twitter"]}
+        ])
+    )
+    db.add(trace_verified)
+
+    # Trace 2: Unverified/Skipped
+    trace_skipped = DecisionTrace(
+        timestamp=datetime.utcnow() - timedelta(hours=4),
+        topic="Random Meme Coin Pump",
+        verification_score=1,
+        sources_list=json.dumps(["TwitterUser123"]),
+        verification_status="SKIPPED",
+        ai_reasoning="No cluster met verification threshold (Score < 2).",
+        generated_tweet="",
+        clusters_found=json.dumps([
+            {"topic": "Random Meme Coin Pump", "score": 1, "sources": ["TwitterUser123"]}
+        ])
+    )
+    db.add(trace_skipped)
+
     db.commit()
     db.close()
-    print("Seeding complete!")
+    print("Seeding complete! You can now check the Audit Log in the Dashboard.")
 
 if __name__ == "__main__":
     seed_data()
