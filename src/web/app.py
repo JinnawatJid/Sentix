@@ -13,7 +13,7 @@ import uvicorn
 import os
 import json
 
-from src.database import get_db, engine, Base
+from src.database import get_db, engine, Base, SessionLocal
 from src.models import ProcessedNews, BotLog, TweetEngagement
 # Import the main bot logic (We will refactor main.py to be importable or import classes directly)
 from src.ingestion import IngestionModule, WhaleMonitor, MarketData
@@ -288,11 +288,11 @@ def startup_event():
     # Define schedule job
     def job():
         # Create a new DB session for the thread
-        db = next(get_db())
-        # Update metrics first
-        bot_controller.update_metrics(db)
-        # Run cycle
-        bot_controller.run_cycle(db)
+        with SessionLocal() as db:
+            # Update metrics first
+            bot_controller.update_metrics(db)
+            # Run cycle
+            bot_controller.run_cycle(db)
 
     schedule.every(4).hours.do(job)
 
