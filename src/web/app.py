@@ -314,11 +314,11 @@ def startup_event():
     # Define schedule job
     def job():
         # Create a new DB session for the thread
-        db = next(get_db())
-        # Update metrics first
-        bot_controller.update_metrics(db)
-        # Run cycle
-        bot_controller.run_cycle(db)
+        with SessionLocal() as db:
+            # Update metrics first
+            bot_controller.update_metrics(db)
+            # Run cycle
+            bot_controller.run_cycle(db)
 
     schedule.every(4).hours.do(job)
 
