@@ -16,7 +16,7 @@ Sentix is a RAG-based automated bot that fetches real-time crypto news, verifies
     *   Uses **ChromaDB** to store news events and retrieve historical context for the AI.
 
 3.  **AI Analysis:**
-    *   Integrated with **Google Gemini API** (`gemini-1.5-flash`) for fast, cost-effective sentiment analysis and tweet generation.
+    *   Integrated with **Google Gemini API** (`gemini-3-flash-preview`) for fast, cost-effective sentiment analysis and tweet generation.
     *   **Robustness:** Includes error handling for API failures.
 
 4.  **Visualization:**
@@ -27,7 +27,7 @@ Sentix is a RAG-based automated bot that fetches real-time crypto news, verifies
 
 ## **Technical Stack**
 *   **Language:** Python 3.11
-*   **Core Libs:** `google-generativeai`, `tweepy`, `chromadb`, `playwright`, `feedparser`, `requests`, `schedule`.
+*   **Core Libs:** `google-genai`, `tweepy`, `chromadb`, `playwright`, `feedparser`, `requests`, `schedule`.
 *   **Deployment:** Docker Compose.
 
 ## **File Structure**
