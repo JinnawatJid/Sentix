@@ -1,0 +1,12 @@
+============================================================
+SENTIX LLM ARCHITECTURE BENCHMARK
+============================================================
+Goal: Evaluate response latency for real-time news analysis.
+Note: OpenAI and DeepSeek are simulated based on public API averages.
+------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/research/llm_benchmark.py", line 143, in <module>
+    run_benchmark()
+  File "/app/research/llm_benchmark.py", line 107, in run_benchmark
+    from dotenv import load_dotenv
+ModuleNotFoundError: No module named 'dotenv'
