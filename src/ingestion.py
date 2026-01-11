@@ -43,7 +43,7 @@ class TwitterClient:
 
             # 2. Get Tweets
             # exclude=['retweets', 'replies'] is good practice
-            response = self.client.get_users_tweets(user_id, max_results=5, exclude=['retweets', 'replies'])
+            response = self.client.get_users_tweets(user_id, max_results=10, exclude=['retweets', 'replies'])
 
             tweets = []
             if response.data:
@@ -117,7 +117,7 @@ class IngestionModule:
         try:
             feed = feedparser.parse(url)
             news_items = []
-            for entry in feed.entries[:3]: # Get top 3 from each to avoid noise
+            for entry in feed.entries[:10]: # Get top 10 from each to avoid noise
                 # Handle inconsistent field names
                 summary = getattr(entry, 'summary', '')
                 if not summary and hasattr(entry, 'description'):

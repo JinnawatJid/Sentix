@@ -66,10 +66,8 @@ def run_dry_run():
         # Ensure client is set (AnalysisAgent sets it in __init__ if env var exists, but we want to force our mock)
         agent.client = mock_client
 
-        # analyze_situation signature: (candidates, context_news, whale_data, historical_context)
         result = agent.analyze_situation(
-            [{"title": "Mock News", "source": "MockSource"}],
-            [{"title": "Context News", "source": "ContextSource"}],
+            {"title": "Mock News"},
             "Whale Data: None",
             "History: None"
         )

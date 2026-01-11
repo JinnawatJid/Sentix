@@ -12,31 +12,28 @@ Sentix is a RAG-based automated bot that fetches **real-time crypto news**, veri
 - **Market Data Verification**:
     - Validates price movements using **CoinGecko API** (e.g., "Is BTC actually down?").
 - **RAG Memory**: Uses **ChromaDB** to store and retrieve historical news context.
-- **AI Analysis**: Uses **Google Gemini** (via Google GenAI API) to synthesize all data points and generate viral tweets.
+- **AI Analysis**: Uses **Google Gemma 3** (via Ollama) to synthesize all data points and generate viral tweets.
 - **Visuals**: Auto-generates **TradingView** chart screenshots using Playwright.
 
 ## Prerequisites
 1. **Docker & Docker Compose**
-2. **Google Gemini API Key** (Get it from [Google AI Studio](https://aistudio.google.com/)).
-3. **Twitter (X) API Keys** (Consumer Key/Secret, Access Token/Secret, Bearer Token).
+2. **Ollama** installed locally (or on a remote server).
+3. **Google Gemma 3** model pulled in Ollama.
 
 ## Setup Instructions
 
-### 1. Configure Environment Variables
-Create a `.env` file in the root directory with your API keys:
+### 1. Install & Configure Ollama
+You need to have Ollama running and the `gemma3` model available.
 
 ```bash
-# .env
+# Install Ollama (Linux/Mac)
+curl -fsSL https://ollama.com/install.sh | sh
 
-# Google AI
-GEMINI_API_KEY=your_gemini_key_here
+# Pull the model
+ollama pull gemma3
 
-# Twitter / X API
-TWITTER_BEARER_TOKEN=your_bearer_token_here
-TWITTER_CONSUMER_KEY=your_consumer_key_here
-TWITTER_CONSUMER_SECRET=your_consumer_secret_here
-TWITTER_ACCESS_TOKEN=your_access_token_here
-TWITTER_ACCESS_TOKEN_SECRET=your_access_token_secret_here
+# Start the server (if not running)
+ollama serve
 ```
 
 ### 2. Run Sentix with Docker
@@ -46,6 +43,8 @@ The easiest way to run the bot is via Docker Compose.
 # Build and run
 docker-compose up --build
 ```
+
+**Note:** The `docker-compose.yml` is configured to talk to Ollama on your host machine via `host.docker.internal:11434`.
 
 ### 3. Manual Installation (Python)
 If you prefer running without Docker:
@@ -61,11 +60,11 @@ python main.py
 
 ## Configuration
 - **Twitter Scraping**: Uses `ntscraper` which relies on public Nitter instances. If scraping fails, the bot automatically falls back to RSS and Blockchain APIs.
-- **Model**: Edit `src/agent.py` if you wish to change the specific Gemini model version (default: `gemini-3-flash-preview`).
+- **Model**: Edit `src/agent.py` to change `gemma3` to another model.
 
 ## Project Structure
 - `src/ingestion.py`: **Live Data Module** (RSS, Twitter Scraper, Blockchain API, CoinGecko).
 - `src/memory.py`: ChromaDB vector store for RAG.
-- `src/agent.py`: Interface to Google Gemini (LLM).
+- `src/agent.py`: Interface to Ollama (LLM).
 - `src/visualizer.py`: Generates chart screenshots.
 - `main.py`: Main execution loop.
