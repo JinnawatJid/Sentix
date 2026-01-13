@@ -154,7 +154,7 @@ class AnalysisAgent:
         try:
             # Generate Initial Draft
             response = self.client.models.generate_content(
-                model='gemini-2.0-flash-exp',
+                model='gemini-3-flash-preview',
                 contents=prompt
             )
             initial_json = response.text
@@ -206,7 +206,7 @@ class AnalysisAgent:
 
         try:
             response = self.client.models.generate_content(
-                model='gemini-2.0-flash-exp',
+                model='gemini-3-flash-preview',
                 contents=critic_prompt
             )
             critique = response.text.strip()
