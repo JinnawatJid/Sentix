@@ -92,30 +92,22 @@ class BotController:
                 self.last_run_status = "Finished (No New Items)"
                 return
 
-            # 2. Verify (CLUSTERING)
-            logger.info(f"Clustering {len(new_items)} new items...")
-            clusters = self.ingestion.cluster_news(new_items)
+            # 2. Verify (PIPELINE)
+            # Replaced cluster_news with process_pipeline
+            logger.info(f"Processing Pipeline for {len(new_items)} new items...")
+            verified_events = self.ingestion.process_pipeline(new_items)
 
-            # Select the best cluster (Score > 1 preferred)
-            verified_cluster = None
-            for c in clusters:
-                if c['score'] >= 2:
-                    verified_cluster = c
-                    break
+            if not verified_events:
+                logger.info("No events met the verification threshold (Score >= 2). Skipping cycle.")
 
-            # Fallback: If no verified cluster, take the top one but mark as unverified?
-            # Strategy: Only tweet if verified. If not, skip.
-            if not verified_cluster:
-                logger.info("No cluster met the verification threshold (Score >= 2). Skipping cycle.")
-
-                # Record the attempt in DecisionTrace anyway for audit
+                # Record trace
                 trace = DecisionTrace(
-                    clusters_found=json.dumps([{ 'topic': c['topic'], 'score': c['score'], 'sources': c['sources'] } for c in clusters]),
+                    clusters_found=json.dumps([]),
                     topic="None Selected",
                     verification_score=0,
                     sources_list=json.dumps([]),
                     verification_status="SKIPPED",
-                    ai_reasoning="No cluster met verification threshold.",
+                    ai_reasoning="No events passed verification pipeline.",
                     generated_tweet=""
                 )
                 db.add(trace)
@@ -124,18 +116,24 @@ class BotController:
                 self.last_run_status = "Finished (Skipped - Unverified)"
                 return
 
-            logger.info(f"Selected Cluster: {verified_cluster['topic']} (Score: {verified_cluster['score']})")
+            # Select the top verified event
+            # process_pipeline already sorts by confidence
+            selected_event = verified_events[0]
+
+            logger.info(f"Selected Event: {selected_event['title']} (Score: {selected_event['source_count']})")
 
             # 3. Analyze
             # Gather auxiliary data
-            symbol = "BTC" if "BTC" in verified_cluster['topic'] or "Bitcoin" in verified_cluster['topic'] else "ETH"
+            topic_title = selected_event['title']
+            symbol = "BTC" if "BTC" in topic_title or "Bitcoin" in topic_title else "ETH"
             whale_data = self.whale_monitor.get_whale_movements(symbol)
             market_info = self.market_data.get_market_status(symbol)
-            history = self.memory.retrieve_context(verified_cluster['topic'])
+            history = self.memory.retrieve_context(topic_title)
 
             verification_context = f"Whale: {whale_data}\nPrice: {market_info['price']}"
 
-            analysis_json = self.agent.analyze_situation(verified_cluster, verification_context, history)
+            # Pass the Verified Event object to Agent
+            analysis_json = self.agent.analyze_situation(selected_event, verification_context, history)
 
             try:
                 clean_json = analysis_json.replace("```json", "").replace("```", "").strip()
@@ -154,19 +152,26 @@ class BotController:
 
                 # 6. Save Trace (Audit Log)
                 trace = DecisionTrace(
-                    clusters_found=json.dumps([{ 'topic': c['topic'], 'score': c['score'], 'sources': c['sources'] } for c in clusters]),
-                    topic=verified_cluster['topic'],
-                    verification_score=verified_cluster['score'],
-                    sources_list=json.dumps(verified_cluster['sources']),
-                    verification_status="VERIFIED" if verified_cluster['score'] >= 2 else "UNVERIFIED",
+                    # Store summary of all verified events found this cycle
+                    clusters_found=json.dumps([{
+                        'topic': e['title'],
+                        'score': e['source_count'],
+                        'sources': e['sources']
+                    } for e in verified_events]),
+
+                    topic=topic_title,
+                    verification_score=selected_event['source_count'],
+                    sources_list=json.dumps(selected_event['sources']),
+                    verification_status="VERIFIED",
                     ai_reasoning=reasoning,
                     generated_tweet=tweet_text
                 )
                 db.add(trace)
 
                 if tweet_id:
-                    # Save NEW items in this cluster to DB
-                    for item in verified_cluster['items']:
+                    # Save items to DB
+                    # The event has 'items' which are the full article objects
+                    for item in selected_event['items']:
                         item_id = item.get('id', item.get('link'))
                         if not db.query(ProcessedNews).filter(ProcessedNews.id == item_id).first():
                              news_entry = ProcessedNews(
@@ -178,14 +183,15 @@ class BotController:
                              db.add(news_entry)
 
                     # Track Engagement
-                    primary_item = verified_cluster['items'][0]
-                    primary_id = primary_item.get('id', primary_item.get('link'))
-                    engagement = TweetEngagement(
-                        tweet_id=str(tweet_id),
-                        news_id=primary_id,
-                        posted_at=datetime.utcnow()
-                    )
-                    db.add(engagement)
+                    if selected_event['items']:
+                        primary_item = selected_event['items'][0]
+                        primary_id = primary_item.get('id', primary_item.get('link'))
+                        engagement = TweetEngagement(
+                            tweet_id=str(tweet_id),
+                            news_id=primary_id,
+                            posted_at=datetime.utcnow()
+                        )
+                        db.add(engagement)
 
                     # Save RAG Memory
                     if knowledge_base_entry:
@@ -195,7 +201,7 @@ class BotController:
                                 "source": "Aggregated",
                                 "timestamp": datetime.utcnow().isoformat(),
                                 "sentiment": sentiment,
-                                "raw_title": verified_cluster['topic']
+                                "raw_title": topic_title
                             }
                         )
 
@@ -314,6 +320,7 @@ def startup_event():
     # Define schedule job
     def job():
         # Create a new DB session for the thread
+        from src.database import SessionLocal
         with SessionLocal() as db:
             # Update metrics first
             bot_controller.update_metrics(db)
