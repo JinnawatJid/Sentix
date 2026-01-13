@@ -3,72 +3,14 @@ from datetime import datetime
 import time
 import requests
 import logging
-import tweepy
 import os
 import difflib
 from dotenv import load_dotenv
+from src.events import resolve_events
+from src.facts import extract_facts
 
 load_dotenv()
 logger = logging.getLogger("Ingestion")
-
-class TwitterClient:
-    def __init__(self):
-        # We need Bearer Token for reading (if available) or OAuth1/2 for writing
-        # For Free Tier reading (user timeline) is usually restricted, but we try anyway.
-        self.bearer_token = os.getenv("TWITTER_BEARER_TOKEN")
-        self.client = None
-        if self.bearer_token:
-            try:
-                self.client = tweepy.Client(bearer_token=self.bearer_token)
-            except Exception as e:
-                logger.error(f"Failed to initialize Twitter Client: {e}")
-
-    def fetch_tweets(self, username, count=2):
-        """
-        Attempts to fetch tweets from a user's timeline.
-        This often fails on Free Tier (403 Forbidden).
-        """
-        if not self.client:
-            return []
-
-        logger.info(f"Attempting to fetch tweets from @{username} via X API...")
-        try:
-            # 1. Get User ID
-            user = self.client.get_user(username=username)
-            if not user.data:
-                logger.warning(f"User @{username} not found.")
-                return []
-
-            user_id = user.data.id
-
-            # 2. Get Tweets
-            # exclude=['retweets', 'replies'] is good practice
-            response = self.client.get_users_tweets(user_id, max_results=5, exclude=['retweets', 'replies'])
-
-            tweets = []
-            if response.data:
-                for t in response.data[:count]:
-                    logger.info(f"Fetched Tweet ID {t.id} from @{username}: {t.text[:50]}...")
-                    tweets.append({
-                        "title": f"Tweet from @{username}",
-                        "text": t.text,
-                        "summary": t.text, # Use text as summary
-                        "source": f"@{username}",
-                        "timestamp": datetime.now().isoformat(), # API v2 doesn't give date easily without fields expansion
-                        "id": str(t.id),
-                        "link": f"https://twitter.com/{username}/status/{t.id}"
-                    })
-            return tweets
-
-        except tweepy.errors.Forbidden as e:
-            logger.warning(f"X API Access Denied (403): Free Tier likely restricts reading tweets. {e}")
-            return None # Signal to trigger fallback
-        except tweepy.errors.TooManyRequests as e:
-            logger.warning(f"X API Rate Limit Hit (429). {e}")
-            return None
-        except Exception as e:
-            logger.error(f"X API General Error: {e}")
-            return None
 
 class IngestionModule:
     def __init__(self):
@@ -80,29 +22,14 @@ class IngestionModule:
             "TheBlock": "https://www.theblock.co/rss",
             "Decrypt": "https://decrypt.co/feed"
         }
-        self.twitter_client = TwitterClient()
 
     def fetch_news(self):
         """
-        Fetches news from ALL available sources (Twitter + RSS) to allow for cross-verification.
+        Fetches news from RSS sources.
         """
         all_news = []
 
-        # 1. Fetch from Twitter Sources (if available/limit not hit)
-        # Removed WatcherGuru and CoinDesk from Twitter to save API limits.
-        # We rely on RSS feeds for these now.
-        twitter_sources = []
-        for handle in twitter_sources:
-            try:
-                tweets = self.twitter_client.fetch_tweets(handle, count=2)
-                if tweets:
-                    all_news.extend(tweets)
-                # Polite delay between calls
-                time.sleep(1)
-            except Exception as e:
-                logger.error(f"Error fetching tweets for {handle}: {e}")
-
-        # 2. Fetch from RSS Sources (Reliable Backbone)
+        # Fetch from RSS Sources
         for source_name, url in self.rss_feeds.items():
             rss_items = self.fetch_rss_feed(source_name, url)
             if rss_items:
@@ -117,7 +44,8 @@ class IngestionModule:
         try:
             feed = feedparser.parse(url)
             news_items = []
-            for entry in feed.entries[:3]: # Get top 3 from each to avoid noise
+            # Updated to fetch 5 items per source as requested
+            for entry in feed.entries[:5]:
                 # Handle inconsistent field names
                 summary = getattr(entry, 'summary', '')
                 if not summary and hasattr(entry, 'description'):
@@ -139,63 +67,84 @@ class IngestionModule:
             logger.error(f"RSS Fetch Error ({source_name}): {e}")
             return []
 
-    def cluster_news(self, news_items):
+    def process_pipeline(self, news_items):
         """
-        Groups news items into clusters based on title similarity.
-        Returns a list of clusters, each containing:
-        - topic: Representative title
-        - items: List of news items
-        - sources: List of unique sources
-        - score: Count of unique sources
+        Orchestrates the Verification Pipeline:
+        1. Anonymize Sources
+        2. Resolve Events (Event Detection)
+        3. Extract Facts (Fact Validation) with Source Confidence
         """
-        clusters = []
+        logger.info("Starting Event Resolution Pipeline...")
+
+        # 1. Anonymize for unbiased event detection
+        anonymized_items = []
+        item_map = {} # Map ID/Link back to full object
 
         for item in news_items:
-            title = item.get('title', '')
-            added_to_cluster = False
+            # Use link as ID if id is missing
+            item_id = item.get('id', item.get('link'))
+            item['id'] = item_id # Ensure ID exists
 
-            for cluster in clusters:
-                # Compare with the cluster's representative topic
-                # Use SequenceMatcher for similarity
-                similarity = difflib.SequenceMatcher(None, title.lower(), cluster['topic'].lower()).ratio()
+            item_map[item_id] = item
 
-                # Threshold for similarity (0.5 is loose, 0.7 is strict)
-                # News titles can vary slightly, so 0.45-0.5 is often a safe starting point for short headlines
-                if similarity > 0.45:
-                    cluster['items'].append(item)
-                    cluster['sources'].add(item['source'])
-                    added_to_cluster = True
-                    break
+            # Create anon copy
+            anon_item = item.copy()
+            if 'source' in anon_item:
+                del anon_item['source']
+            anonymized_items.append(anon_item)
 
-            if not added_to_cluster:
-                # Create new cluster
-                clusters.append({
-                    "topic": title,
-                    "items": [item],
-                    "sources": {item['source']},
-                    "score": 1
-                })
+        # 2. Resolve Events
+        # Returns list of { event_id, title, articles: [id1, id2...] }
+        events = resolve_events(anonymized_items)
+        if not events:
+            logger.info("No events resolved from news items.")
+            return []
 
-        # Finalize clusters (convert sets to lists, calculate scores)
-        final_clusters = []
-        for c in clusters:
-            c['sources'] = list(c['sources'])
-            c['score'] = len(c['sources'])
-            final_clusters.append(c)
+        verified_events = []
 
-        # Sort by score (highest verification first)
-        final_clusters.sort(key=lambda x: x['score'], reverse=True)
-        return final_clusters
+        # 3. Process Each Event
+        for event in events:
+            article_ids = event.get('articles', [])
+
+            # Retrieve full articles with sources
+            full_articles = [item_map[aid] for aid in article_ids if aid in item_map]
+
+            if not full_articles:
+                continue
+
+            # Check strictly for distinct sources before expensive LLM call
+            unique_sources = set(a['source'] for a in full_articles)
+
+            # Extract Facts (Verification)
+            # This returns { facts: [], confidence: 0.0-1.0 }
+            fact_data = extract_facts(event, full_articles)
+
+            # Enrich Event Object
+            event['facts'] = fact_data.get('facts', [])
+            event['confidence'] = fact_data.get('confidence', 0)
+            event['sources'] = list(unique_sources)
+            event['source_count'] = len(unique_sources)
+            event['items'] = full_articles # Replace IDs with full objects for the Agent
+
+            # Filter Logic:
+            # User mentioned: "stories with a Verification Score of less than 2 are marked as UNVERIFIED"
+            if event['source_count'] >= 2:
+                 verified_events.append(event)
+            else:
+                 logger.info(f"Event '{event['title']}' rejected. Only {event['source_count']} source(s).")
+
+        # Sort by confidence/source count
+        verified_events.sort(key=lambda x: x['source_count'], reverse=True)
+
+        return verified_events
 
 class WhaleMonitor:
     def __init__(self):
-        # Twitter client removed to save API limits. Relying on direct On-Chain data.
         pass
 
     def get_whale_movements(self, symbol="BTC"):
         """
         Checks Blockchain.info for large unconfirmed transactions.
-        (Previously used Twitter @whale_alert, now removed to avoid rate limits).
         """
         logger.info("Checking Blockchain.info for large transactions (Whale Monitor)...")
         try:
@@ -248,25 +197,3 @@ class MarketData:
         except Exception as e:
             logger.error(f"Market Data Error: {e}")
             return {"symbol": symbol, "price": "N/A", "change_24h": "N/A"}
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    
-    # Test
-    ingestor = IngestionModule()
-    print("--- Testing Ingestion ---")
-    
-    # Mock data for clustering test
-    mock_news = [
-        {"title": "Bitcoin Hits $100k", "source": "SourceA"},
-        {"title": "BTC reaches 100,000 dollars", "source": "SourceB"},
-        {"title": "Ethereum upgrade coming", "source": "SourceC"},
-    ]
-    print("Clustering Mock Data...")
-    clusters = ingestor.cluster_news(mock_news)
-    for c in clusters:
-        print(f"Topic: {c['topic']} | Score: {c['score']} | Sources: {c['sources']}")
-
-    whale = WhaleMonitor()
-    print("\n--- Testing Whale Monitor ---")
-    print(f"Whale Status: {whale.get_whale_movements('BTC')}")

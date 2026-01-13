@@ -1,6 +1,6 @@
 import json
-from core.llm import call_llm
-from core.jsonutil import parse_or_fix
+from src.core.llm import call_llm
+from src.core.jsonutil import parse_or_fix
 
 def resolve_events(articles):
     prompt = f"""

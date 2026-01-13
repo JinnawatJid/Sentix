@@ -35,6 +35,7 @@ class AnalysisAgent:
         self.api_key = os.getenv("GEMINI_API_KEY")
         self.client = None
         self.language = "en"  # Default
+        self.critic_enabled = True # Default
 
         # Load Configuration
         self._load_config()
@@ -43,8 +44,7 @@ class AnalysisAgent:
             logger.warning("GEMINI_API_KEY not found in environment variables. AI analysis will fail.")
         else:
             try:
-                # Preview models often require v1alpha.
-                # We explicitly set it here to avoid 404 errors with experimental models.
+                # Use v1alpha for experimental models
                 self.client = genai.Client(
                     api_key=self.api_key,
                     http_options=types.HttpOptions(api_version='v1alpha')
@@ -53,25 +53,27 @@ class AnalysisAgent:
                  logger.error(f"Failed to initialize Gemini Client: {e}")
 
     def _load_config(self):
-        """Loads language configuration from config.json"""
+        """Loads configuration from config.json"""
         try:
             if os.path.exists("config.json"):
                 with open("config.json", "r", encoding="utf-8") as f:
                     config = json.load(f)
                     self.language = config.get("language", "en")
+                    self.critic_enabled = config.get("critic_enabled", True)
+
                     if self.language not in LOCALIZATION:
                         logger.warning(f"Language '{self.language}' not supported. Defaulting to 'en'.")
                         self.language = "en"
             else:
-                logger.info("config.json not found. Defaulting to 'en'.")
+                logger.info("config.json not found. Defaulting to defaults.")
         except Exception as e:
-            logger.error(f"Error loading config.json: {e}. Defaulting to 'en'.")
+            logger.error(f"Error loading config.json: {e}. Using defaults.")
 
-    def analyze_situation(self, verified_cluster, whale_data, historical_context):
+    def analyze_situation(self, verified_event, whale_data, historical_context):
         """
-        Analyzes a SINGLE VERIFIED CLUSTER.
-        The clustering logic in IngestionModule has already grouped similar stories
-        and calculated the verification score (count of distinct sources).
+        Analyzes a SINGLE VERIFIED EVENT.
+        Input `verified_event` is a dict from IngestionModule.process_pipeline containing:
+        - title, facts, confidence, sources, items, etc.
         """
         if not self.client:
              return self._fallback_response("Missing API Key or Client Initialization Failed")
@@ -80,29 +82,34 @@ class AnalysisAgent:
         headers = loc["headers"]
         prompt_instruction = loc["prompt_instruction"]
 
-        # Format Cluster Info
-        topic = verified_cluster.get('topic', 'Unknown Topic')
-        score = verified_cluster.get('score', 1)
-        sources = verified_cluster.get('sources', [])
+        # 1. Format Event Data from Input
+        topic = verified_event.get('title', 'Unknown Topic')
+        score = verified_event.get('source_count', 0)
+        sources = verified_event.get('sources', [])
+        facts = verified_event.get('facts', [])
 
-        articles_text = ""
-        for i, item in enumerate(verified_cluster.get('items', [])):
-            title = item.get('title', 'Unknown Title')
-            summary = item.get('summary', item.get('text', ''))
-            src = item.get('source', 'Unknown')
-            articles_text += f"- Article {i+1} [{src}]: {title} - {summary}\n"
+        # Prepare Facts Text for Prompt
+        facts_text = ""
+        for f in facts:
+            facts_text += f"- {f['fact']} (Verified by {', '.join(f['sources'])})\n"
 
+        # Fallback if no facts (shouldn't happen if pipeline worked, but safe to keep items)
+        if not facts_text:
+            for i, item in enumerate(verified_event.get('items', [])):
+                facts_text += f"- Article {i+1}: {item.get('title')} - {item.get('summary')}\n"
+
+        # 2. Construct Main Prompt
         prompt = f"""
         You are 'Sentix', an elite crypto sentiment analyst AI.
         
-        TASK: Analyze this PRE-VERIFIED news cluster to generate a trusted trading signal.
+        TASK: Analyze this VERIFIED EVENT to generate a trusted trading signal.
         
-        **VERIFIED EVENT CLUSTER:**
+        **EVENT:**
         Topic: {topic}
-        Verification Score: {score} Sources (Sources: {', '.join(sources)})
+        Consensus Score: {score} Sources (Sources: {', '.join(sources)})
         
-        **ARTICLES:**
-        {articles_text}
+        **VERIFIED FACTS:**
+        {facts_text}
         
         **ADDITIONAL CONTEXT:**
         Whale Data: "{whale_data}"
@@ -110,10 +117,8 @@ class AnalysisAgent:
         
         INSTRUCTIONS:
         1. **Fact Checking & Citations:**
-           - You are analyzing a cluster of articles about the SAME event.
-           - Synthesize the details into a coherent narrative.
+           - Base your analysis STRICTLY on the "Verified Facts".
            - **CRITICAL:** You MUST append a short citation for your main claims, e.g. "Bitcoin hits $100k [Source: CoinDesk]".
-           - If the articles conflict, mention the discrepancy.
 
         2. **Synthesis & Persona:**
            - Adopt a **Crypto-Native Persona**: Be sharp, insightful, and engaging. Avoid robotic language.
@@ -147,14 +152,79 @@ class AnalysisAgent:
         """
         
         try:
+            # Generate Initial Draft
             response = self.client.models.generate_content(
-                model='gemini-3-flash-preview',
+                model='gemini-2.0-flash-exp',
                 contents=prompt
             )
-            return response.text
+            initial_json = response.text
+
+            # 3. Critic Loop (Self-Correction)
+            if self.critic_enabled:
+                final_json = self._critic_loop(initial_json, facts_text, prompt)
+                return final_json
+
+            return initial_json
+
         except Exception as e:
             logger.error(f"Gemini API Error: {e}")
             return self._fallback_response(str(e))
+
+    def _critic_loop(self, draft_json_str, facts_text, original_prompt):
+        """
+        Critic Option B: Validates the generated tweet against verified facts.
+        """
+        logger.info("Running Critic Loop...")
+        try:
+            # Parse Draft
+            clean_json = draft_json_str.replace("```json", "").replace("```", "").strip()
+            draft = json.loads(clean_json)
+            tweet = draft.get("tweet", "")
+        except Exception as e:
+            logger.warning(f"Critic failed to parse draft: {e}")
+            return draft_json_str
+
+        critic_prompt = f"""
+        You are a STRICT FACT-CHECKING CRITIC.
+
+        VERIFIED FACTS (The Truth):
+        {facts_text}
+
+        DRAFT TWEET (To Check):
+        {tweet}
+
+        TASK:
+        1. Compare the tweet against the Verified Facts.
+        2. Check for HALLUCINATIONS (claims not in facts) or Exaggerations.
+        3. If the tweet is 100% supported by facts, return ONLY the string "PASS".
+        4. If there are errors, REWRITE the tweet to be accurate and engaging.
+
+        OUTPUT:
+        If PASS: "PASS"
+        If FAIL: Return ONLY the rewritten tweet text.
+        """
+
+        try:
+            response = self.client.models.generate_content(
+                model='gemini-2.0-flash-exp',
+                contents=critic_prompt
+            )
+            critique = response.text.strip()
+
+            if "PASS" in critique:
+                logger.info("Critic passed the tweet.")
+                return draft_json_str
+            else:
+                logger.warning("Critic rewrote the tweet.")
+                # Update the tweet in the draft JSON
+                draft['tweet'] = critique
+                # Update reasoning note
+                draft['reasoning'] += " (Refined by Critic)"
+                return json.dumps(draft)
+
+        except Exception as e:
+            logger.error(f"Critic Loop Error: {e}")
+            return draft_json_str
 
     def _fallback_response(self, error_msg):
         loc = LOCALIZATION.get(self.language, LOCALIZATION["en"])
@@ -172,16 +242,18 @@ if __name__ == "__main__":
     agent = AnalysisAgent()
     print(f"Loaded Language: {agent.language}")
     
-    mock_cluster = {
-        "topic": "Bitcoin hits $100k",
-        "score": 3,
+    # Mock Event Data
+    mock_event = {
+        "title": "Bitcoin hits $100k",
+        "source_count": 3,
         "sources": ["CoinDesk", "WatcherGuru", "TheBlock"],
-        "items": [
-            {"title": "Bitcoin hits $100k", "source": "WatcherGuru", "summary": "Price up."},
-            {"title": "BTC crosses $100k", "source": "CoinDesk", "summary": "Historic moment."}
-        ]
+        "facts": [
+            {"fact": "Bitcoin price exceeded $100,000", "sources": ["CoinDesk", "WatcherGuru"]},
+            {"fact": "Trading volume spiked 200%", "sources": ["TheBlock", "CoinDesk"]}
+        ],
+        "items": []
     }
     
-    print("Testing Agent Analysis (Verified Cluster)...")
-    result = agent.analyze_situation(mock_cluster, "Whale: Quiet", "History: None")
+    print("Testing Agent Analysis (Verified Event)...")
+    result = agent.analyze_situation(mock_event, "Whale: Quiet", "History: None")
     print(result)
