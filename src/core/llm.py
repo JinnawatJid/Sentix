@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 logger = logging.getLogger("CoreLLM")
 
-def call_llm(prompt, model='gemini-2.0-flash-exp'):
+def call_llm(prompt, model='gemini-3-flash-preview'):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         logger.error("GEMINI_API_KEY not found.")
