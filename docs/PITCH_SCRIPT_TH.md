@@ -41,12 +41,12 @@
 
 **Pipeline การทำงาน (The Truth Pipeline):**
 
-1.  **Ingestion (หู):** ดึงข้อมูลดิบจาก Top Tier RSS (CoinDesk, WatcherGuru) *ไม่ใช่แค่ Twitter เพื่อเลี่ยง Rate Limit*
+1.  **Ingestion (หู):** ดึงข้อมูลดิบจาก Top Tier RSS (CoinDesk, WatcherGuru) *โดยตัดการพึ่งพา Twitter Ingestion API เพื่อแก้ปัญหา Rate Limit 100%*
 2.  **Resolution (สมองซีกซ้าย):** ใช้ Algorithm จัดกลุ่มข่าวที่เหมือนกัน (Clustering) เพื่อดูว่าแหล่งข่าวพูดตรงกันกี่เจ้า (Consensus Verification)
 3.  **Verification (ตาส่อง):**
     *   ยิง API ไปเช็คราคา (CoinGecko)
     *   เช็ค Mempool Transaction (Blockchain.info) ว่ามีวาฬโอนเงินจริงไหม
-4.  **Analysis (สมองซีกขวา):** ใช้ **Google Gemini 1.5 Pro** วิเคราะห์ความสัมพันธ์ และเขียนสรุป
+4.  **Analysis (สมองซีกขวา):** ใช้ **Google Gemini 3 Flash** (รุ่นใหม่ล่าสุดที่เร็วที่สุด) วิเคราะห์ความสัมพันธ์ และเขียนสรุป
 5.  **Visualization (ปาก):** ใช้ Playwright บินไปแคปภาพกราฟ TradingView แบบ Real-time และโพสต์ลง X
 
 **Stakeholders:**
