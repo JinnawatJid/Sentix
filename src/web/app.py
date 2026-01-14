@@ -97,8 +97,9 @@ class BotController:
             logger.info(f"Processing Pipeline for {len(new_items)} new items...")
             verified_events = self.ingestion.process_pipeline(new_items)
 
+            # Updated Logic: Allow single-source events (verified_events will contain them now)
             if not verified_events:
-                logger.info("No events met the verification threshold (Score >= 2). Skipping cycle.")
+                logger.info("No events found in pipeline.")
 
                 # Record trace
                 trace = DecisionTrace(
@@ -113,7 +114,7 @@ class BotController:
                 db.add(trace)
                 db.commit()
 
-                self.last_run_status = "Finished (Skipped - Unverified)"
+                self.last_run_status = "Finished (Skipped - No Events)"
                 return
 
             # Select the top verified event
