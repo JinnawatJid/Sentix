@@ -7,7 +7,7 @@ import os
 import difflib
 from dotenv import load_dotenv
 from src.events import resolve_events
-from src.facts import extract_facts
+from src.facts import extract_facts_batch
 
 load_dotenv()
 logger = logging.getLogger("Ingestion")
@@ -72,7 +72,7 @@ class IngestionModule:
         Orchestrates the Verification Pipeline:
         1. Anonymize Sources
         2. Resolve Events (Event Detection)
-        3. Extract Facts (Fact Validation) with Source Confidence
+        3. Extract Facts (Fact Validation) with Source Confidence (Batched)
         """
         logger.info("Starting Event Resolution Pipeline...")
 
@@ -102,36 +102,55 @@ class IngestionModule:
 
         verified_events = []
 
-        # 3. Process Each Event
+        # Prepare Batch Data
+        events_to_process = []
+
         for event in events:
             article_ids = event.get('articles', [])
-
-            # Retrieve full articles with sources
             full_articles = [item_map[aid] for aid in article_ids if aid in item_map]
 
             if not full_articles:
                 continue
 
-            # Check strictly for distinct sources before expensive LLM call
             unique_sources = set(a['source'] for a in full_articles)
 
-            # Extract Facts (Verification)
-            # This returns { facts: [], confidence: 0.0-1.0 }
-            fact_data = extract_facts(event, full_articles)
-
-            # Enrich Event Object
-            event['facts'] = fact_data.get('facts', [])
-            event['confidence'] = fact_data.get('confidence', 0)
+            # Enrich Event Object early
             event['sources'] = list(unique_sources)
             event['source_count'] = len(unique_sources)
-            event['items'] = full_articles # Replace IDs with full objects for the Agent
+            event['items'] = full_articles
 
-            # Filter Logic:
-            # User mentioned: "stories with a Verification Score of less than 2 are marked as UNVERIFIED"
-            if event['source_count'] >= 2:
-                 verified_events.append(event)
-            else:
-                 logger.info(f"Event '{event['title']}' rejected. Only {event['source_count']} source(s).")
+            events_to_process.append(event)
+
+        if not events_to_process:
+            return []
+
+        # 3. Batch Fact Extraction
+        logger.info(f"Extracting facts for {len(events_to_process)} events (Batch Processing)...")
+        # Prepare data structure for batch call
+        batch_input = []
+        for e in events_to_process:
+            batch_input.append({
+                "event_id": e.get("event_id"),
+                "title": e.get("title"),
+                "articles": e.get("items")
+            })
+
+        facts_results = extract_facts_batch(batch_input)
+
+        # 4. Map Results Back
+        for event in events_to_process:
+            event_id = event.get("event_id")
+            fact_data = facts_results.get(event_id, {"facts": [], "confidence": 0})
+
+            event['facts'] = fact_data.get('facts', [])
+
+            # Use calculated confidence from LLM or fallback to source count heuristic if needed
+            # But the LLM's confidence calculation is now based on diversity too
+            event['confidence'] = fact_data.get('confidence', 0)
+
+            # Logic: We accept ALL events now, regardless of score
+            verified_events.append(event)
+            logger.info(f"Event '{event['title']}' processed. Sources: {event['source_count']}")
 
         # Sort by confidence/source count
         verified_events.sort(key=lambda x: x['source_count'], reverse=True)
