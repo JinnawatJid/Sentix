@@ -1,0 +1,41 @@
+SLIDE CONTENT SPECIFICATION
+===========================
+Project: Sentix - Slide 5 (Transparency Pivot)
+Reference Image: image.png
+
+INSTRUCTIONS
+------------
+Use this text to overlay the placeholders in your image editor.
+
+1. HEADER SECTION
+-----------------
+Title:      THE TRANSPARENCY REVOLUTION
+Subtitle:   FROM BLACK BOX TO GLASS BOX
+
+2. COMPARISON COLUMNS
+---------------------
+Left Column (Red / "OTHERS"):
+- Item 1:   Opaque Algorithms
+- Item 2:   Unverified Sources
+- Item 3:   Hallucination Risk
+- Item 4:   Zero Accountability
+
+Right Column (Green / "SENTIX"):
+- Item 1:   Open Audit Logs
+- Item 2:   Verified Citations
+- Item 3:   Decision Traces
+- Item 4:   Self-Correction
+
+3. FOOTER
+---------
+Date:       2024.10.27
+
+4. DESIGN RECOMMENDATIONS
+-------------------------
+- Font:     Modern Sans-Serif (e.g., Roboto, Inter, or Montserrat).
+- Style:    All Caps for headers and list items.
+- Colors:
+  - Title:  White or Light Blue (#E0F7FA)
+  - Red:    #FF4444 (for "Others" items)
+  - Green:  #44FF44 (for "Sentix" items)
+- Effect:   Add a slight "Outer Glow" to the text if possible to match the cyberpunk aesthetic.
