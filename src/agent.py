@@ -215,11 +215,15 @@ class AnalysisAgent:
                 logger.info("Critic passed the tweet.")
                 return draft_json_str
             else:
-                logger.warning("Critic rewrote the tweet.")
+                original_tweet = tweet
+                logger.warning(f"Critic rewrote the tweet.\nOriginal: {original_tweet}\nRewritten: {critique}")
+
                 # Update the tweet in the draft JSON
                 draft['tweet'] = critique
-                # Update reasoning note
-                draft['reasoning'] += " (Refined by Critic)"
+
+                # Update reasoning note to include the before/after for Audit Log
+                draft['reasoning'] += f"\n\n[Critic Refinement]\nOriginal Tweet:\n{original_tweet}\n\nRewritten Tweet:\n{critique}"
+
                 return json.dumps(draft)
 
         except Exception as e:
