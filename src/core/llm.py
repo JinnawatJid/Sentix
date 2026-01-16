@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 logger = logging.getLogger("CoreLLM")
 
-def call_llm(prompt, model='gemini-3-flash-preview'):
+def call_llm(prompt, model='gemini-3-flash-preview', fallback_model='gemini-2.5-flash'):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         logger.error("GEMINI_API_KEY not found.")
@@ -30,9 +30,17 @@ def call_llm(prompt, model='gemini-3-flash-preview'):
     base_delay = 5 # Start with 5 seconds (error message said ~8s)
 
     for attempt in range(max_retries):
+        # Default to primary model
+        current_model = model
+
+        # On the last attempt (index 4 = 5th try), switch to fallback if available
+        if attempt == max_retries - 1 and fallback_model:
+            logger.warning(f"Max retries nearing limit. Switching to FALLBACK model: {fallback_model} for final attempt.")
+            current_model = fallback_model
+
         try:
             response = client.models.generate_content(
-                model=model,
+                model=current_model,
                 contents=prompt
             )
             return response.text
@@ -43,15 +51,15 @@ def call_llm(prompt, model='gemini-3-flash-preview'):
                 if attempt < max_retries - 1:
                     # Exponential Backoff with Jitter
                     delay = (base_delay * (2 ** attempt)) + random.uniform(0, 1)
-                    logger.warning(f"LLM Rate Limit Hit (429). Retrying in {delay:.2f}s... (Attempt {attempt+1}/{max_retries})")
+                    logger.warning(f"LLM Rate Limit Hit (429) on {current_model}. Retrying in {delay:.2f}s... (Attempt {attempt+1}/{max_retries})")
                     time.sleep(delay)
                     continue
                 else:
-                    logger.error(f"LLM Rate Limit Exceeded after {max_retries} attempts. Error: {e}")
+                    logger.error(f"LLM Rate Limit Exceeded after {max_retries} attempts. Final attempt with {current_model} failed. Error: {e}")
                     return None
             else:
                 # Non-retriable error
-                logger.error(f"LLM Call Error: {e}")
+                logger.error(f"LLM Call Error on {current_model}: {e}")
                 return None
 
     return None

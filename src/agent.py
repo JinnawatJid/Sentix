@@ -1,9 +1,8 @@
-from google import genai
-from google.genai import types
 import os
 import json
 import logging
 from dotenv import load_dotenv
+from src.core.llm import call_llm
 
 load_dotenv()
 logger = logging.getLogger("AnalysisAgent")
@@ -33,7 +32,6 @@ LOCALIZATION = {
 class AnalysisAgent:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
-        self.client = None
         self.language = "en"  # Default
         self.critic_enabled = True # Default
 
@@ -42,15 +40,6 @@ class AnalysisAgent:
 
         if not self.api_key:
             logger.warning("GEMINI_API_KEY not found in environment variables. AI analysis will fail.")
-        else:
-            try:
-                # Use v1alpha for experimental models
-                self.client = genai.Client(
-                    api_key=self.api_key,
-                    http_options=types.HttpOptions(api_version='v1alpha')
-                )
-            except Exception as e:
-                 logger.error(f"Failed to initialize Gemini Client: {e}")
 
     def _load_config(self):
         """Loads configuration from config.json"""
@@ -75,8 +64,8 @@ class AnalysisAgent:
         Input `verified_event` is a dict from IngestionModule.process_pipeline containing:
         - title, facts, confidence, sources, items, etc.
         """
-        if not self.client:
-             return self._fallback_response("Missing API Key or Client Initialization Failed")
+        if not self.api_key:
+             return self._fallback_response("Missing API Key")
 
         loc = LOCALIZATION.get(self.language, LOCALIZATION["en"])
         headers = loc["headers"]
@@ -152,12 +141,11 @@ class AnalysisAgent:
         """
         
         try:
-            # Generate Initial Draft
-            response = self.client.models.generate_content(
-                model='gemini-3-flash-preview',
-                contents=prompt
-            )
-            initial_json = response.text
+            # Generate Initial Draft using Core LLM (Retry/Fallback handled there)
+            initial_json = call_llm(prompt, model='gemini-3-flash-preview')
+
+            if not initial_json:
+                return self._fallback_response("LLM Rate Limited or Failed")
 
             # 3. Critic Loop (Self-Correction)
             if self.critic_enabled:
@@ -205,11 +193,13 @@ class AnalysisAgent:
         """
 
         try:
-            response = self.client.models.generate_content(
-                model='gemini-3-flash-preview',
-                contents=critic_prompt
-            )
-            critique = response.text.strip()
+            critique = call_llm(critic_prompt, model='gemini-3-flash-preview')
+
+            if not critique:
+                logger.warning("Critic LLM call failed. Proceeding with original draft.")
+                return draft_json_str
+
+            critique = critique.strip()
 
             if "PASS" in critique:
                 logger.info("Critic passed the tweet.")
