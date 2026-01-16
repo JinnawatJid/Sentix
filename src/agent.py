@@ -206,7 +206,10 @@ class AnalysisAgent:
                 return draft_json_str
             else:
                 original_tweet = tweet
-                logger.warning(f"Critic rewrote the tweet.\nOriginal: {original_tweet}\nRewritten: {critique}")
+                logger.warning(
+                    f"Critic rewrote the tweet.\nOriginal: {original_tweet}\nRewritten: {critique}",
+                    extra={'context': {'original': original_tweet, 'rewritten': critique}}
+                )
 
                 # Update the tweet in the draft JSON
                 draft['tweet'] = critique

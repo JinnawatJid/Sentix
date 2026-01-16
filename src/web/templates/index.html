@@ -64,12 +64,35 @@
                             <th class="p-2">Time</th>
                             <th class="p-2">Level</th>
                             <th class="p-2">Message</th>
+                            <th class="p-2">Action</th>
                         </tr>
                     </thead>
                     <tbody id="logs-table-body">
                         <!-- Logs here -->
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Details Modal (Adapted from audit.html) -->
+    <div id="details-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center p-4" style="z-index: 50;">
+        <div class="bg-gray-800 rounded-lg max-w-2xl w-full p-6 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-2xl font-bold text-blue-400">Critic Rewrite Details</h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <h4 class="font-bold text-gray-400 text-sm">Original Tweet</h4>
+                    <p id="modal-original" class="text-gray-200 mt-1 p-2 bg-gray-900 rounded whitespace-pre-wrap font-mono text-sm border-l-4 border-yellow-500"></p>
+                </div>
+
+                <div>
+                    <h4 class="font-bold text-gray-400 text-sm">Rewritten Tweet (Critic)</h4>
+                    <p id="modal-rewritten" class="text-gray-200 mt-1 p-2 bg-gray-900 rounded whitespace-pre-wrap font-mono text-sm border-l-4 border-green-500"></p>
+                </div>
             </div>
         </div>
     </div>
@@ -115,13 +138,34 @@
                 if(log.level === "ERROR") levelColor = "text-red-400";
                 if(log.level === "WARNING") levelColor = "text-yellow-400";
 
+                let actionHtml = "";
+                // Check for Critic Context
+                if (log.context && log.context.original && log.context.rewritten) {
+                     // Escape quotes for the onclick handler
+                     const safeOriginal = log.context.original.replace(/"/g, '&quot;').replace(/'/g, "&#39;");
+                     const safeRewritten = log.context.rewritten.replace(/"/g, '&quot;').replace(/'/g, "&#39;");
+
+                     actionHtml = `<button onclick="showCriticDetails('${safeOriginal}', '${safeRewritten}')" class="text-blue-400 hover:text-blue-300 text-sm underline font-bold">View Diff</button>`;
+                }
+
                 row.innerHTML = `
                     <td class="p-2 text-sm text-gray-400">${new Date(log.timestamp).toLocaleString()}</td>
                     <td class="p-2 font-mono text-sm ${levelColor}">${log.level}</td>
                     <td class="p-2 text-sm">${log.message}</td>
+                    <td class="p-2 text-center">${actionHtml}</td>
                 `;
                 tbody.appendChild(row);
             });
+        }
+
+        function showCriticDetails(original, rewritten) {
+            document.getElementById('modal-original').innerText = original;
+            document.getElementById('modal-rewritten').innerText = rewritten;
+            document.getElementById('details-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('details-modal').classList.add('hidden');
         }
 
         let sentimentChartInstance = null;
