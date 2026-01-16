@@ -17,9 +17,9 @@ flowchart TD
     %% ---------------------------------------------------------
     subgraph Sources ["Data Sources (External)"]
         direction TB
-        RSS[RSS Feeds<br/>(WatcherGuru, CoinDesk, etc.)]:::source
-        Whale[Whale Monitor<br/>(Blockchain.info)]:::source
-        Market[Market Data<br/>(CoinGecko)]:::source
+        RSS["RSS Feeds<br/>(WatcherGuru, CoinDesk, etc.)"]:::source
+        Whale["Whale Monitor<br/>(Blockchain.info)"]:::source
+        Market["Market Data<br/>(CoinGecko)"]:::source
     end
 
     %% ---------------------------------------------------------
@@ -27,9 +27,9 @@ flowchart TD
     %% ---------------------------------------------------------
     subgraph Ingestion ["Ingestion & Verification Layer"]
         direction TB
-        Ingest[IngestionModule<br/>(Fetch & Normalize)]:::process
-        Cluster[Event Resolution<br/>(Clustering & Anonymization)]:::process
-        Verify[Fact Extraction<br/>(Batch Verification)]:::process
+        Ingest["IngestionModule<br/>(Fetch & Normalize)"]:::process
+        Cluster["Event Resolution<br/>(Clustering & Anonymization)"]:::process
+        Verify["Fact Extraction<br/>(Batch Verification)"]:::process
 
         %% Logic Connections
         RSS --> Ingest
@@ -44,10 +44,10 @@ flowchart TD
     %% ---------------------------------------------------------
     subgraph Core ["Intelligence Core"]
         direction TB
-        RAG[(ChromaDB<br/>RAG Memory)]:::storage
-        Agent[AnalysisAgent<br/>(Orchestrator)]:::ai
-        Gemini[Gemini 3 Flash<br/>(LLM Inference)]:::ai
-        Critic[Critic Loop<br/>(Self-Correction)]:::ai
+        RAG[("ChromaDB<br/>RAG Memory")]:::storage
+        Agent["AnalysisAgent<br/>(Orchestrator)"]:::ai
+        Gemini["Gemini 3 Flash<br/>(LLM Inference)"]:::ai
+        Critic["Critic Loop<br/>(Self-Correction)"]:::ai
 
         %% Logic Connections
         Verify -->|"Verified Events"| Agent
@@ -63,9 +63,9 @@ flowchart TD
     %% ---------------------------------------------------------
     subgraph Outputs ["Presentation & Output"]
         direction TB
-        Twitter[Twitter / X API<br/>(Post Only)]:::output
-        Dashboard[Audit Dashboard<br/>(/audit & /config)]:::output
-        Logs[Decision Trace<br/>(Audit Logs)]:::storage
+        Twitter["Twitter / X API<br/>(Post Only)"]:::output
+        Dashboard["Audit Dashboard<br/>(/audit & /config)"]:::output
+        Logs[("Decision Trace<br/>(Audit Logs)")]:::storage
 
         %% Logic Connections
         Agent -->|"Publish"| Twitter
