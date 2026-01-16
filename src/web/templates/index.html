@@ -123,13 +123,18 @@
             }
         }
 
+        // Global store for logs to avoid escaping hell
+        window.currentLogs = [];
+
         async function fetchLogs() {
             const res = await fetch(`${API_BASE}/logs`);
             const logs = await res.json();
+            window.currentLogs = logs; // Store global
+
             const tbody = document.getElementById('logs-table-body');
             tbody.innerHTML = "";
 
-            logs.forEach(log => {
+            logs.forEach((log, index) => {
                 const row = document.createElement('tr');
                 row.className = "border-b border-gray-700 hover:bg-gray-750";
 
@@ -141,11 +146,8 @@
                 let actionHtml = "";
                 // Check for Critic Context
                 if (log.context && log.context.original && log.context.rewritten) {
-                     // Escape quotes for the onclick handler
-                     const safeOriginal = log.context.original.replace(/"/g, '&quot;').replace(/'/g, "&#39;");
-                     const safeRewritten = log.context.rewritten.replace(/"/g, '&quot;').replace(/'/g, "&#39;");
-
-                     actionHtml = `<button onclick="showCriticDetails('${safeOriginal}', '${safeRewritten}')" class="text-blue-400 hover:text-blue-300 text-sm underline font-bold">View Diff</button>`;
+                     // Use Index instead of embedding the string
+                     actionHtml = `<button onclick="showCriticDetails(${index})" class="text-blue-400 hover:text-blue-300 text-sm underline font-bold">View Diff</button>`;
                 }
 
                 row.innerHTML = `
@@ -158,9 +160,12 @@
             });
         }
 
-        function showCriticDetails(original, rewritten) {
-            document.getElementById('modal-original').innerText = original;
-            document.getElementById('modal-rewritten').innerText = rewritten;
+        function showCriticDetails(index) {
+            const log = window.currentLogs[index];
+            if (!log || !log.context) return;
+
+            document.getElementById('modal-original').innerText = log.context.original || "N/A";
+            document.getElementById('modal-rewritten').innerText = log.context.rewritten || "N/A";
             document.getElementById('details-modal').classList.remove('hidden');
         }
 
