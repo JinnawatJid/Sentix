@@ -309,6 +309,10 @@ def index(request: Request):
 def audit_page(request: Request):
     return templates.TemplateResponse("audit.html", {"request": request})
 
+@app.get("/config", response_class=HTMLResponse)
+def config_page(request: Request):
+    return templates.TemplateResponse("config.html", {"request": request})
+
 # Scheduler Logic
 def scheduler_loop():
     while True:
