@@ -12,6 +12,7 @@ import schedule
 import uvicorn
 import os
 import json
+import re
 
 from src.database import get_db, engine, Base
 from src.models import ProcessedNews, BotLog, TweetEngagement, DecisionTrace
@@ -66,6 +67,81 @@ class BotController:
         self.agent = AnalysisAgent()
         self.visualizer = Visualizer()
         self.publisher = TwitterPublisher()
+
+    def _extract_symbol(self, text):
+        """
+        Extracts crypto symbol from text using a mapping list.
+        Defaults to BTC if no known symbol is found.
+        """
+        text = text.lower()
+
+        # Priority mapping (Title Keywords -> Ticker)
+        # Order matters: longer phrases first to avoid partial matches (e.g. "classic" vs "ethereum classic")
+        mapping = {
+            "bitcoin cash": "BCH",
+            "bitcoin": "BTC",
+            "btc": "BTC",
+            "ethereum classic": "ETC",
+            "ethereum": "ETH",
+            "ether": "ETH",
+            "eth": "ETH",
+            "solana": "SOL",
+            "sol": "SOL",
+            "ripple": "XRP",
+            "xrp": "XRP",
+            "cardano": "ADA",
+            "ada": "ADA",
+            "dogecoin": "DOGE",
+            "doge": "DOGE",
+            "polkadot": "DOT",
+            "dot": "DOT",
+            "matic": "MATIC",
+            "polygon": "MATIC",
+            "litecoin": "LTC",
+            "ltc": "LTC",
+            "tron": "TRX",
+            "avalanche": "AVAX",
+            "avax": "AVAX",
+            "shiba inu": "SHIB",
+            "shib": "SHIB",
+            "uniswap": "UNI",
+            "uni": "UNI",
+            "wrapped bitcoin": "WBTC",
+            "chainlink": "LINK",
+            "link": "LINK",
+            "cosmos": "ATOM",
+            "atom": "ATOM",
+            "monero": "XMR",
+            "filecoin": "FIL",
+            "aptos": "APT",
+            "lido": "LDO",
+            "arbitrum": "ARB",
+            "near protocol": "NEAR",
+            "near": "NEAR",
+            "quant": "QNT",
+            "vechain": "VET",
+            "sui": "SUI"
+        }
+
+        # Find the earliest match in the text
+        best_match_ticker = None
+        min_index = len(text)
+
+        for key, ticker in mapping.items():
+            # Check for word boundaries to avoid matching "eth" in "something"
+            pattern = r'(^|\s|\W)' + re.escape(key) + r'($|\s|\W)'
+            match = re.search(pattern, text)
+            if match:
+                # We found a match. Is it earlier than the current best?
+                start_index = match.start()
+                if start_index < min_index:
+                    min_index = start_index
+                    best_match_ticker = ticker
+
+        if best_match_ticker:
+            return best_match_ticker
+
+        return "BTC" # Default to Bitcoin
 
     def run_cycle(self, db: Session):
         self.last_run_status = "Running..."
@@ -126,7 +202,9 @@ class BotController:
             # 3. Analyze
             # Gather auxiliary data
             topic_title = selected_event['title']
-            symbol = "BTC" if "BTC" in topic_title or "Bitcoin" in topic_title else "ETH"
+            symbol = self._extract_symbol(topic_title)
+            logger.info(f"Extracted Symbol: {symbol}")
+
             whale_data = self.whale_monitor.get_whale_movements(symbol)
             market_info = self.market_data.get_market_status(symbol)
             history = self.memory.retrieve_context(topic_title)

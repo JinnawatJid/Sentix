@@ -164,7 +164,12 @@ class WhaleMonitor:
     def get_whale_movements(self, symbol="BTC"):
         """
         Checks Blockchain.info for large unconfirmed transactions.
+        Note: Currently only supports Bitcoin.
         """
+        if symbol != "BTC":
+            logger.info(f"Whale monitoring skipped for {symbol} (Only BTC supported)")
+            return f"Whale monitoring not available for {symbol} (BTC only)."
+
         logger.info("Checking Blockchain.info for large transactions (Whale Monitor)...")
         try:
             # Fetch unconfirmed transactions
@@ -196,14 +201,54 @@ class MarketData:
         Fetches real-time price using CoinGecko API (No key needed).
         """
         try:
-            # Map symbol to CoinGecko ID
-            ids = {"BTC": "bitcoin", "ETH": "ethereum"}
-            cg_id = ids.get(symbol, "bitcoin")
+            # Extended Map for CoinGecko IDs
+            ids = {
+                "BTC": "bitcoin",
+                "ETH": "ethereum",
+                "SOL": "solana",
+                "XRP": "ripple",
+                "ADA": "cardano",
+                "DOGE": "dogecoin",
+                "DOT": "polkadot",
+                "MATIC": "matic-network",
+                "LTC": "litecoin",
+                "TRX": "tron",
+                "AVAX": "avalanche-2",
+                "SHIB": "shiba-inu",
+                "UNI": "uniswap",
+                "WBTC": "wrapped-bitcoin",
+                "LINK": "chainlink",
+                "ATOM": "cosmos",
+                "XMR": "monero",
+                "ETC": "ethereum-classic",
+                "BCH": "bitcoin-cash",
+                "FIL": "filecoin",
+                "APT": "aptos",
+                "LDO": "lido-dao",
+                "ARB": "arbitrum",
+                "NEAR": "near",
+                "QNT": "quant",
+                "VET": "vechain",
+                "SUI": "sui"
+            }
+            cg_id = ids.get(symbol)
             
+            # If not in map, fallback to BTC or handle error?
+            # We'll default to 'bitcoin' only if symbol is explicitly BTC or invalid default.
+            # If it's a new symbol not in map, we might want to try using the symbol name lowercase?
+            # For safety, let's default to bitcoin if lookup fails.
+            if not cg_id:
+                logger.warning(f"Symbol {symbol} not found in map. Defaulting to Bitcoin.")
+                cg_id = "bitcoin"
+
             url = f"https://api.coingecko.com/api/v3/simple/price?ids={cg_id}&vs_currencies=usd&include_24hr_change=true"
             r = requests.get(url, timeout=10)
             data = r.json()
             
+            if cg_id not in data:
+                 logger.warning(f"CoinGecko ID {cg_id} not found in response.")
+                 return {"symbol": symbol, "price": "N/A", "change_24h": "N/A"}
+
             price = data[cg_id]['usd']
             change = data[cg_id]['usd_24h_change']
             
